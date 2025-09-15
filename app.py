@@ -1,139 +1,83 @@
-from flask import Flask, render_template, request, redirect, url_for, session
+from flask import Flask, render_template, request, redirect, url_for, session, flash
 from flask_sqlalchemy import SQLAlchemy
 import os
-import random
-from datetime import datetime, timedelta
 
+# =====================
+# CONFIGURACIÓN
+# =====================
 app = Flask(__name__)
-app.secret_key = "supersecretkey"
+app.secret_key = "clave_super_secreta"  # Necesaria para sesiones y mensajes flash
 
-# Configuración de la base de datos SQLite
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///database.db"
+# Base de datos SQLite en un archivo local (database.db)
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+db_path = os.path.join(BASE_DIR, "database.db")
+app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
 db = SQLAlchemy(app)
 
-# --------- MODELOS ---------
-class Cliente(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    codigo = db.Column(db.String(10), unique=True, nullable=False)
-    nombre = db.Column(db.String(100), nullable=False)
-    direccion = db.Column(db.String(200), nullable=False)
-    prestamos = db.relationship("Prestamo", backref="cliente", lazy=True, cascade="all, delete-orphan")
+# =====================
+# MODELO DE USUARIOS
+# =====================
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)       # ID autoincremental
+    username = db.Column(db.String(50), unique=True, nullable=False)
+    password = db.Column(db.String(50), nullable=False)
 
-class Prestamo(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    cliente_id = db.Column(db.Integer, db.ForeignKey("cliente.id"), nullable=False)
-    monto = db.Column(db.Float, nullable=False)
-    interes = db.Column(db.Float, nullable=False)
-    plazo_dias = db.Column(db.Integer, nullable=False)
-    fecha = db.Column(db.DateTime, default=datetime.utcnow)
-    abonos = db.relationship("Abono", backref="prestamo", lazy=True, cascade="all, delete-orphan")
+# Crear tablas automáticamente al arrancar
+with app.app_context():
+    db.create_all()
+    # Crear usuario por defecto si no existe
+    if not User.query.filter_by(username="mjesus40").first():
+        user = User(username="mjesus40", password="198409")
+        db.session.add(user)
+        db.session.commit()
 
-class Abono(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    prestamo_id = db.Column(db.Integer, db.ForeignKey("prestamo.id"), nullable=False)
-    monto = db.Column(db.Float, nullable=False)
-    fecha = db.Column(db.DateTime, default=datetime.utcnow)
+# =====================
+# RUTAS
+# =====================
 
-# --------- LOGIN ---------
-USUARIO = "mjesus40"
-CLAVE = "198409"
-
-@app.route("/", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        usuario = request.form["usuario"]
-        clave = request.form["clave"]
-        if usuario == USUARIO and clave == CLAVE:
-            session["usuario"] = usuario
-            return redirect(url_for("index"))
-        else:
-            return render_template("login.html", error="Usuario o contraseña incorrectos")
-    return render_template("login.html")
-
-@app.route("/logout")
-def logout():
-    session.pop("usuario", None)
+# Redirige a login si no hay sesión
+@app.route("/")
+def index():
+    if "user" in session:
+        return redirect(url_for("dashboard"))
     return redirect(url_for("login"))
 
-# --------- INDEX ---------
-@app.route("/index")
-def index():
-    if "usuario" not in session:
-        return redirect(url_for("login"))
-    clientes = Cliente.query.all()
-    return render_template("index.html", clientes=clientes)
-
-# --------- NUEVO CLIENTE ---------
-@app.route("/nuevo_cliente", methods=["GET", "POST"])
-def nuevo_cliente():
-    if "usuario" not in session:
-        return redirect(url_for("login"))
-
+# LOGIN
+@app.route("/login", methods=["GET", "POST"])
+def login():
     if request.method == "POST":
-        nombre = request.form["nombre"]
-        direccion = request.form["direccion"]
-        codigo = str(random.randint(10000, 99999))
+        username = request.form["username"]
+        password = request.form["password"]
 
-        cliente = Cliente(nombre=nombre, direccion=direccion, codigo=codigo)
-        db.session.add(cliente)
-        db.session.commit()
+        # Buscar usuario en la base de datos
+        user = User.query.filter_by(username=username, password=password).first()
+        if user:
+            session["user"] = user.username
+            flash("Has iniciado sesión correctamente.", "success")
+            return redirect(url_for("dashboard"))
+        else:
+            flash("Usuario o contraseña incorrectos.", "danger")
 
-        return redirect(url_for("nuevo_credito", cliente_id=cliente.id))
+    return render_template("login.html")
 
-    return render_template("nuevo_cliente.html")
-
-# --------- NUEVO CRÉDITO ---------
-@app.route("/nuevo_credito/<int:cliente_id>", methods=["GET", "POST"])
-def nuevo_credito(cliente_id):
-    if "usuario" not in session:
+# PANEL PRINCIPAL (solo si hay sesión activa)
+@app.route("/dashboard")
+def dashboard():
+    if "user" not in session:
         return redirect(url_for("login"))
+    return render_template("dashboard.html", user=session["user"])
 
-    cliente = Cliente.query.get_or_404(cliente_id)
+# LOGOUT
+@app.route("/logout")
+def logout():
+    session.pop("user", None)
+    flash("Has cerrado sesión.", "info")
+    return redirect(url_for("login"))
 
-    if request.method == "POST":
-        monto = float(request.form["monto"])
-        interes = float(request.form["interes"])
-        plazo = int(request.form["plazo"])
-
-        prestamo = Prestamo(
-            cliente_id=cliente.id,
-            monto=monto,
-            interes=interes,
-            plazo_dias=plazo
-        )
-        db.session.add(prestamo)
-        db.session.commit()
-        return redirect(url_for("index"))
-
-    return render_template("nuevo_credito.html", cliente=cliente)
-
-# --------- ABONOS ---------
-@app.route("/abonar/<int:prestamo_id>", methods=["POST"])
-def abonar(prestamo_id):
-    if "usuario" not in session:
-        return redirect(url_for("login"))
-
-    monto = float(request.form["monto"])
-    abono = Abono(prestamo_id=prestamo_id, monto=monto)
-    db.session.add(abono)
-    db.session.commit()
-    return redirect(url_for("index"))
-
-# --------- ELIMINAR CLIENTE ---------
-@app.route("/eliminar_cliente/<int:cliente_id>")
-def eliminar_cliente(cliente_id):
-    if "usuario" not in session:
-        return redirect(url_for("login"))
-    cliente = Cliente.query.get_or_404(cliente_id)
-    db.session.delete(cliente)
-    db.session.commit()
-    return redirect(url_for("index"))
-
-# --------- INICIALIZACIÓN ---------
-@app.before_serving
-def inicializar():
-    db.create_all()
-
+# =====================
+# ARRANQUE LOCAL
+# =====================
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000)
