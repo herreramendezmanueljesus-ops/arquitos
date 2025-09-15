@@ -1,19 +1,16 @@
-{% extends "base.html" %}
-{% block title %}Nuevo Crédito Inicial{% endblock %}
-
-{% block content %}
-<h2>Préstamo Inicial para {{ cliente.nombre }}</h2>
-<p><strong>Código:</strong> {{ cliente.codigo }}</p>
-
-<form method="POST">
-  <label>Monto:</label>
-  <input type="number" name="monto" step="0.01" required><br>
-  <label>Interés (%):</label>
-  <input type="number" name="interes" step="0.01" required><br>
-  <label>Plazo (días):</label>
-  <input type="number" name="plazo" required><br>
-  <label>Orden:</label>
-  <input type="number" name="orden" value="1" required><br>
-  <button type="submit">Guardar Préstamo</button>
-</form>
-{% endblock %}
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Nuevo Crédito</title>
+</head>
+<body>
+  <h2>Registrar Crédito para {{ cliente.nombre }}</h2>
+  <form method="POST">
+    Orden: <input type="text" name="orden" required><br>
+    Valor: <input type="number" step="0.01" name="valor" required><br>
+    Interés (%): <input type="number" step="0.01" name="interes" required><br>
+    Plazo (días): <input type="number" name="plazo" required><br>
+    <button type="submit">Guardar Crédito</button>
+  </form>
+</body>
+</html>
