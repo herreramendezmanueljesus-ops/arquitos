@@ -1,54 +1,68 @@
 {% extends "base.html" %}
-{% block title %}Inicio{% endblock %}
 
 {% block content %}
-<h2>Clientes</h2>
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Gestión de Créditos</h2>
+    <div>
+      <a href="{{ url_for('nuevo_cliente') }}" class="btn btn-success">➕ Nuevo Cliente</a>
+      <a href="{{ url_for('liquidacion') }}" class="btn btn-primary">📊 Liquidación</a>
+    </div>
+  </div>
 
-<form method="POST" action="{{ url_for('nuevo_cliente') }}">
-    <input type="text" name="nombre" placeholder="Nombre" required>
-    <input type="text" name="direccion" placeholder="Dirección" required>
-    <button type="submit">➕ Nuevo Cliente</button>
-</form>
-
-<table border="1" cellpadding="5">
+  <table class="table table-bordered table-striped align-middle">
     <thead>
-        <tr>
-            <th>Orden</th>
-            <th>Código</th>
-            <th>Nombre</th>
-            <th>Crédito</th>
-            <th>Abono</th>
-            <th>Saldo</th>
-            <th>Acciones</th>
-        </tr>
+      <tr>
+        <th>Orden</th>
+        <th>Nombre</th>
+        <th>Dirección</th>
+        <th>Crédito</th>
+        <th>Abono</th>
+        <th>Saldo</th>
+        <th>Acciones</th>
+      </tr>
     </thead>
     <tbody>
-        {% for c in clientes %}
-        <tr>
-            <td>{{ c[4] }}</td>
-            <td>{{ c[1] }}</td>
-            <td>{{ c[2] }}</td>
-            <td>{{ c[5] }}</td>
-            <td>
-                <form method="POST" action="{{ url_for('abono', codigo=c[1]) }}">
-                    <input type="number" step="0.01" name="monto" required>
-                    <button type="submit">💸</button>
-                </form>
-            </td>
-            <td>{{ c[7] }}</td>
-            <td>
-                <form method="POST" action="{{ url_for('eliminar','clientes',c[0]) }}">
-                    <button type="submit">❌</button>
-                </form>
-                <form method="POST" action="{{ url_for('nuevo_prestamo', codigo=c[1]) }}">
-                    <input type="number" step="0.01" name="monto" placeholder="Monto" required>
-                    <input type="number" step="0.01" name="interes" placeholder="Interés (%)" required>
-                    <input type="number" name="plazo" placeholder="Plazo (días)" required>
-                    <button type="submit">➕ Préstamo</button>
-                </form>
-            </td>
-        </tr>
-        {% endfor %}
+      {% for c in clientes %}
+      <tr>
+        <!-- Orden editable -->
+        <td>
+          <form method="POST" action="{{ url_for('actualizar_orden', cliente_id=c.id) }}" class="d-flex">
+            <input type="number" name="orden" value="{{ c.orden }}" class="form-control form-control-sm" style="width:70px;">
+            <button type="submit" class="btn btn-sm btn-outline-secondary ms-1">✔</button>
+          </form>
+        </td>
+
+        <td>{{ c.nombre }}</td>
+        <td>{{ c.direccion }}</td>
+        <td>{{ c.credito }}</td>
+
+        <!-- Campo Abono -->
+        <td>
+          <form method="POST" action="{{ url_for('registrar_abono', cliente_id=c.id) }}" class="d-flex">
+            <input type="number" step="0.01" name="monto" class="form-control form-control-sm" placeholder="0">
+            <button type="submit" class="btn btn-sm btn-success ms-1">💰</button>
+          </form>
+        </td>
+
+        <!-- Saldo -->
+        <td>
+          {% if c.saldo == 0 %}
+            <span class="badge bg-success">0</span>
+          {% else %}
+            {{ c.saldo }}
+          {% endif %}
+        </td>
+
+        <!-- Botón Eliminar -->
+        <td>
+          <form method="POST" action="{{ url_for('eliminar_cliente', cliente_id=c.id) }}">
+            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('¿Seguro que quieres eliminar este cliente?')">❌</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
     </tbody>
-</table>
+  </table>
+</div>
 {% endblock %}
