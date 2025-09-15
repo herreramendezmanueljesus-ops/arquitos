@@ -1,14 +1,19 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Nuevo Cliente</title>
-</head>
-<body>
-  <h2>Registrar Cliente</h2>
-  <form method="POST">
-    Nombre: <input type="text" name="nombre" required><br>
-    Dirección: <input type="text" name="direccion" required><br>
+{% extends "base.html" %}
+{% block content %}
+<h2>Nuevo Cliente</h2>
+<form method="POST">
+    <label>Orden:</label>
+    <input type="number" name="orden" required>
+    <label>Nombre:</label>
+    <input type="text" name="nombre" required>
+    <label>Dirección:</label>
+    <input type="text" name="direccion">
+    <label>Monto:</label>
+    <input type="number" name="monto" step="0.01" required>
+    <label>Interés (%):</label>
+    <input type="number" name="interes" step="0.01" required>
+    <label>Plazo (días):</label>
+    <input type="number" name="plazo" required>
     <button type="submit">Guardar</button>
-  </form>
-</body>
-</html>
+</form>
+{% endblock %}

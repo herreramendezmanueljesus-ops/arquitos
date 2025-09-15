@@ -2,17 +2,16 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>{% block title %}Mi App{% endblock %}</title>
+    <title>Gestión de Créditos</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    {% block head %}{% endblock %}
 </head>
 <body>
     <header>
         <h1>Gestión de Créditos</h1>
         <nav>
             <a href="{{ url_for('index') }}">Inicio</a>
-            <a href="{{ url_for('liquidacion') }}">Liquidación</a>
+            <a href="{{ url_for('nuevo_cliente') }}">Nuevo Cliente</a>
+            <a href="{{ url_for('logout') }}">Salir</a>
         </nav>
     </header>
     <main>

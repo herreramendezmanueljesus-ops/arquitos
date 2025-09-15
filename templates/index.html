@@ -1,40 +1,37 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Gestión de Créditos</title>
-</head>
-<body>
-  <div style="text-align:right;">
-    <a href="{{ url_for('nuevo_cliente') }}">➕ Nuevo Cliente</a>
-    <a href="{{ url_for('liquidacion') }}">📊 Liquidación</a>
-    <a href="{{ url_for('logout') }}">🚪 Salir</a>
-  </div>
-
-  <h2>Créditos Actuales</h2>
-  <table border="1">
+{% extends "base.html" %}
+{% block content %}
+<h2>Clientes y Créditos</h2>
+<table>
     <tr>
-      <th>Orden</th>
-      <th>Nombre</th>
-      <th>Crédito</th>
-      <th>Abono</th>
-      <th>Saldo</th>
-      <th>Eliminar</th>
+        <th>Orden</th>
+        <th>Nombre</th>
+        <th>Crédito</th>
+        <th>Interés (%)</th>
+        <th>Plazo (días)</th>
+        <th>Saldo</th>
+        <th>Abonar</th>
+        <th>Eliminar</th>
     </tr>
-    {% for c in creditos %}
+    {% for row in data %}
     <tr>
-      <td>{{ c.orden }}</td>
-      <td>{{ c.nombre }}</td>
-      <td>{{ c.valor }}</td>
-      <td>
-        <form method="POST" action="{{ url_for('abonar', idx=loop.index0) }}">
-          <input type="number" step="0.01" name="monto" required>
-          <button type="submit">✔</button>
-        </form>
-      </td>
-      <td>{{ c.saldo }}</td>
-      <td><a href="{{ url_for('eliminar', idx=loop.index0) }}">❌</a></td>
+        <td>{{ row.orden }}</td>
+        <td>{{ row.nombre }}</td>
+        <td>{{ row.credito }}</td>
+        <td>{{ row.interes }}</td>
+        <td>{{ row.plazo }}</td>
+        <td>{{ row.saldo }}</td>
+        <td>
+            <form method="POST" action="{{ url_for('abonar', credito_id=row.id) }}">
+                <input type="number" name="monto" step="0.01" required>
+                <button type="submit">+</button>
+            </form>
+        </td>
+        <td>
+            <form method="POST" action="{{ url_for('eliminar', credito_id=row.id) }}">
+                <button type="submit" class="delete">X</button>
+            </form>
+        </td>
     </tr>
     {% endfor %}
-  </table>
-</body>
-</html>
+</table>
+{% endblock %}
