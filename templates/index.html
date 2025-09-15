@@ -1,76 +1,54 @@
- {% extends "base.html" %}
+{% extends "base.html" %}
 {% block title %}Inicio{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h2>Clientes y Créditos</h2>
-  <div>
-    <a href="{{ url_for('nuevo_cliente') }}" class="btn btn-success me-2"><i class="bi bi-person-plus"></i> Nuevo cliente</a>
-    <a href="{{ url_for('liquidacion') }}" class="btn btn-outline-secondary"><i class="bi bi-journal-text"></i> Liquidación</a>
-  </div>
-</div>
+<h2>Clientes</h2>
 
-<div class="card shadow-sm">
-  <div class="card-body p-0">
-    <table class="table table-striped table-hover mb-0">
-      <thead class="table-dark">
+<form method="POST" action="{{ url_for('nuevo_cliente') }}">
+    <input type="text" name="nombre" placeholder="Nombre" required>
+    <input type="text" name="direccion" placeholder="Dirección" required>
+    <button type="submit">➕ Nuevo Cliente</button>
+</form>
+
+<table border="1" cellpadding="5">
+    <thead>
         <tr>
-          <th style="width:90px">Orden</th>
-          <th>Cliente</th>
-          <th>Crédito</th>
-          <th style="width:180px">Abonar</th>
-          <th>Saldo</th>
-          <th style="width:170px">Acciones</th>
+            <th>Orden</th>
+            <th>Código</th>
+            <th>Nombre</th>
+            <th>Crédito</th>
+            <th>Abono</th>
+            <th>Saldo</th>
+            <th>Acciones</th>
         </tr>
-      </thead>
-      <tbody>
+    </thead>
+    <tbody>
         {% for c in clientes %}
         <tr>
-          <td>
-            <form action="{{ url_for('editar_orden') }}" method="POST" class="d-flex">
-              <input type="hidden" name="cliente_id" value="{{ c.id }}">
-              <input type="number" name="orden" value="{{ c.orden }}" class="form-control form-control-sm me-2" style="width:70px;">
-              <button class="btn btn-sm btn-primary" type="submit">OK</button>
-            </form>
-          </td>
-          <td>{{ c.nombre }}</td>
-          <td>${{ '%.2f'|format(c.credito) }}</td>
-
-          <td>
-            <div class="d-flex">
-              <form action="{{ url_for('agregar_abono') }}" method="POST" class="d-flex me-2">
-                <input type="hidden" name="cliente_id" value="{{ c.id }}">
-                <input type="number" name="monto" step="0.01" class="form-control form-control-sm" style="width:100px;" placeholder="Monto">
-                <button class="btn btn-sm btn-success ms-2" type="submit"><i class="bi bi-cash-stack"></i> Abonar</button>
-              </form>
-
-              <form action="{{ url_for('agregar_prestamo') }}" method="POST" class="d-flex">
-                <input type="hidden" name="cliente_id" value="{{ c.id }}">
-                <input type="number" name="monto" step="0.01" class="form-control form-control-sm" style="width:100px;" placeholder="Monto">
-                <button class="btn btn-sm btn-warning ms-2" type="submit"><i class="bi bi-plus-circle"></i> Préstamo</button>
-              </form>
-            </div>
-          </td>
-
-          <td>${{ '%.2f'|format(c.saldo) }}</td>
-
-          <td>
-            <a href="{{ url_for('editar_cliente', cliente_id=c.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i> Editar</a>
-
-            <form action="{{ url_for('eliminar_cliente') }}" method="POST" style="display:inline" onsubmit="return confirm('Eliminar cliente y movimientos asociados?');">
-              <input type="hidden" name="cliente_id" value="{{ c.id }}">
-              <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash"></i></button>
-            </form>
-          </td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="6" class="text-center text-muted">No hay clientes registrados</td>
+            <td>{{ c[4] }}</td>
+            <td>{{ c[1] }}</td>
+            <td>{{ c[2] }}</td>
+            <td>{{ c[5] }}</td>
+            <td>
+                <form method="POST" action="{{ url_for('abono', codigo=c[1]) }}">
+                    <input type="number" step="0.01" name="monto" required>
+                    <button type="submit">💸</button>
+                </form>
+            </td>
+            <td>{{ c[7] }}</td>
+            <td>
+                <form method="POST" action="{{ url_for('eliminar','clientes',c[0]) }}">
+                    <button type="submit">❌</button>
+                </form>
+                <form method="POST" action="{{ url_for('nuevo_prestamo', codigo=c[1]) }}">
+                    <input type="number" step="0.01" name="monto" placeholder="Monto" required>
+                    <input type="number" step="0.01" name="interes" placeholder="Interés (%)" required>
+                    <input type="number" name="plazo" placeholder="Plazo (días)" required>
+                    <button type="submit">➕ Préstamo</button>
+                </form>
+            </td>
         </tr>
         {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
+    </tbody>
+</table>
 {% endblock %}
-        

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Gestión de Créditos{% endblock %}
+
+{% block head %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+function abonar(clienteId) {
+    let input = $("#abono-" + clienteId);
+    let monto = parseFloat(input.val());
+    if (isNaN(monto) || monto <= 0) return;
+
+    $.post("/registrar_abono/" + clienteId, {monto: monto}, function(data) {
+        // Actualizar saldo en la tabla
+        $("#saldo-" + clienteId).text(data.nuevo_saldo);
+
+        // Resetear el campo a 0
+        input.val(0);
+
+        // Marcar la casilla de verde
+        input.css("background-color", "#90EE90");
+        setTimeout(() => input.css("background-color", ""), 800);
+    });
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<h2>Clientes y Créditos</h2>
+<table border="1" cellpadding="5">
+  <thead>
+    <tr>
+      <th>Orden</th>
+      <th>Cliente</th>
+      <th>Crédito</th>
+      <th>Abonos</th>
+      <th>Saldo</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in clientes %}
+    {% set saldo = calcular_saldo(c) %}
+    {% set vencido = (c.prestamos and c.prestamos[-1].fecha_vencimiento < ahora) %}
+    {% set dias_vencido = ( (ahora - c.prestamos[-1].fecha_vencimiento).days if c.prestamos else 0 ) %}
+    <tr 
+      {% if vencido and dias_vencido <= 20 %}
+        style="background-color:orange"
+      {% elif vencido and dias_vencido > 20 %}
+        style="background-color:red; color:white"
+      {% endif %}
+    >
+      <td>
+        <form method="POST" action="{{ url_for('cambiar_orden', cliente_id=c.id) }}">
+          <input type="number" name="orden" value="{{ c.orden }}" style="width:50px">
+          <button type="submit">✔</button>
+        </form>
+      </td>
+      <td>{{ c.nombre }}</td>
+      <td>
+        {% if c.prestamos %}
+          {{ c.prestamos[-1].monto }}
+        {% else %}
+          -
+        {% endif %}
+      </td>
+      <td>
+        <input type="number" step="0.01" id="abono-{{ c.id }}" value="0" style="width:80px">
+        <button type="button" onclick="abonar({{ c.id }})">Abonar</button>
+      </td>
+      <td id="saldo-{{ c.id }}">{{ saldo }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

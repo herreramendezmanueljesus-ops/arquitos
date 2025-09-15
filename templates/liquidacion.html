@@ -1,114 +1,52 @@
-{% extends "base.html" %}
+ {% extends "base.html" %}
 {% block title %}Liquidación{% endblock %}
 
 {% block head %}
 <script>
-function verDetalle(tipo, fecha_iso, fecha_display) {
-    // fecha_iso: YYYY-MM-DD
-    $.getJSON('/detalle/' + tipo + '?fecha=' + fecha_iso, function(data) {
-        let html = '<h5 class="mt-3">Detalle de ' + tipo + ' del ' + fecha_display + '</h5>';
-        if (data.length === 0) {
-            html += '<p class="text-muted">No hay registros.</p>';
-        } else {
-            html += '<ul class="list-group">';
-            data.forEach(function(d) {
-                html += '<li class="list-group-item d-flex justify-content-between align-items-center">';
-                html += '<div>' + d.nombre + ' — $' + d.monto.toFixed(2) + '</div>';
-                if (tipo === 'abonos') {
-                    html += '<div><button class="btn btn-sm btn-danger" onclick="deleteItem(\'abono\',' + d.id + ',\'' + fecha_iso + '\')">✖</button></div>';
-                } else {
-                    html += '<div><button class="btn btn-sm btn-danger" onclick="deleteItem(\'prestamo\',' + d.id + ',\'' + fecha_iso + '\')">✖</button></div>';
-                }
-                html += '</li>';
-            });
-            html += '</ul>';
-        }
+function verDetalle(tipo, fecha) {
+    $.getJSON('/detalle/' + tipo + '?fecha=' + fecha, function(data) {
+        let html = '<ul>';
+        data.forEach(function(d) {
+            html += '<li>' + d.nombre + ': ' + d.monto +
+                    ' <form style="display:inline" method="POST" action="/eliminar/'+tipo+'/'+d.id+'">' +
+                    '<button type="submit">❌</button></form></li>';
+        });
+        html += '</ul>';
         $('#detalle').html(html);
-    });
-}
-
-function deleteItem(tipo, id, fecha_iso) {
-    if (!confirm('¿Eliminar este ' + tipo + '?')) return;
-    let url = tipo === 'abono' ? '/delete_abono/' + id : '/delete_prestamo/' + id;
-    $.post(url, function(res) {
-        if (res.ok) {
-            // refrescar detalle de la fecha actual
-            // si hay un tipo activo en el encabezado, re-cargarlo; de forma simple recargamos la sección
-            // aquí asumimos que el detalle mostrado corresponde al tipo que se borró
-            // volver a buscar detalle: encontrar qué botón está activo sería más complejo; simplemente recargar la página para ver cambios
-            location.reload();
-        } else {
-            alert('Error: ' + (res.msg || 'No se pudo eliminar.'));
-        }
-    }).fail(function() {
-        alert('Error en la petición al servidor.');
     });
 }
 </script>
 {% endblock %}
 
 {% block content %}
-<h2 class="mb-3">Liquidación</h2>
+<h2>Liquidación</h2>
 
-<div class="card mb-3">
-  <div class="card-body">
-    <form class="row g-2 align-items-end" method="GET" action="{{ url_for('liquidacion') }}">
-      <div class="col-auto">
-        <label class="form-label">Desde</label>
-        <input type="date" name="start" class="form-control" value="{{ start or '' }}">
-      </div>
-      <div class="col-auto">
-        <label class="form-label">Hasta</label>
-        <input type="date" name="end" class="form-control" value="{{ end or '' }}">
-      </div>
-      <div class="col-auto">
-        <button class="btn btn-primary">Buscar rango</button>
-      </div>
-      <div class="col-auto">
-        <a class="btn btn-outline-secondary" href="{{ url_for('liquidacion') }}">Últimas 10 fechas</a>
-      </div>
-    </form>
-  </div>
-</div>
+<form method="POST">
+    <label>Desde: <input type="date" name="fecha1"></label>
+    <label>Hasta: <input type="date" name="fecha2"></label>
+    <button type="submit">Buscar</button>
+</form>
 
-<div class="card shadow-sm">
-  <div class="card-body p-0">
-    <table class="table table-striped mb-0">
-      <thead class="table-dark">
+<table border="1" cellpadding="5">
+    <thead>
         <tr>
-          <th>Fecha</th>
-          <th>Total Préstamos</th>
-          <th>Total Abonos</th>
-          <th>Suma del Paquete</th>
+            <th>Fecha</th>
+            <th>Total Préstamos</th>
+            <th>Total Abonos</th>
+            <th>Suma del Paquete</th>
         </tr>
-      </thead>
-      <tbody>
+    </thead>
+    <tbody>
         {% for r in registros %}
         <tr>
-          <td>{{ r.fecha }}</td>
-          <td>
-            <button class="btn btn-sm btn-warning" onclick="verDetalle('prestamos','{{ r.fecha_iso }}','{{ r.fecha }}')">
-              ${{ '%.2f'|format(r.total_prestamos) }}
-            </button>
-          </td>
-          <td>
-            <button class="btn btn-sm btn-success" onclick="verDetalle('abonos','{{ r.fecha_iso }}','{{ r.fecha }}')">
-              ${{ '%.2f'|format(r.total_abonos) }}
-            </button>
-          </td>
-          <td>${{ '%.2f'|format(r.suma_paquete) }}</td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="4" class="text-center text-muted">No hay registros</td>
+            <td>{{ r[0] }}</td>
+            <td><button onclick="verDetalle('prestamos','{{ r[0] }}')">{{ r[1] }}</button></td>
+            <td><button onclick="verDetalle('abonos','{{ r[0] }}')">{{ r[2] }}</button></td>
+            <td>{{ r[3] }}</td>
         </tr>
         {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<div id="detalle" class="mt-4"></div>
+    </tbody>
+</table>
+<div id="detalle"></div>
 {% endblock %}
-
-                                        
+                      
