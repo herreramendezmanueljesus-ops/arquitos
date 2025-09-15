@@ -1,44 +1,74 @@
-{% extends 'base.html' %}
-{% block content %}
-<h1 class="h3 mb-3">Liquidación</h1>
+  {% extends "base.html" %}
+{% block title %}Liquidación{% endblock %}
 
-<form method="POST" class="row g-3 mb-3">
-  <div class="col-md-4">
-    <label class="form-label">Fecha inicio</label>
-    <input type="date" name="start_date" class="form-control" value="{{ request.form.get('start_date','') }}">
-  </div>
-  <div class="col-md-4">
-    <label class="form-label">Fecha fin</label>
-    <input type="date" name="end_date" class="form-control" value="{{ request.form.get('end_date','') }}">
-  </div>
-  <div class="col-md-4 d-flex align-items-end">
-    <button class="btn btn-primary w-100">Filtrar</button>
-  </div>
-</form>
-
-<h5>Total Abonos: {{ '%.2f'|format(total_abonos) }}</h5>
-<h5>Total Préstamos: {{ '%.2f'|format(total_prestamos) }}</h5>
-
-<table class="table table-bordered table-striped mt-3">
-  <thead>
-    <tr>
-      <th>#</th>
-      <th>Cliente ID</th>
-      <th>Tipo</th>
-      <th>Monto</th>
-      <th>Fecha/Hora</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for t in txs %}
-    <tr>
-      <td>{{ t.id }}</td>
-      <td>{{ t.client_id }}</td>
-      <td>{{ t.type }}</td>
-      <td>{{ '%.2f'|format(t.amount) }}</td>
-      <td>{{ t.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+{% block head %}
+<script>
+function verDetalle(tipo, fecha) {
+    $.getJSON('/detalle/' + tipo + '?fecha=' + fecha, function(data) {
+        let html = '<h5 class="mt-4">Detalle de ' + tipo + ' del ' + fecha + '</h5>';
+        if (data.length === 0) {
+            html += '<p class="text-muted">No hay registros.</p>';
+        } else {
+            html += '<ul class="list-group">';
+            data.forEach(function(d) {
+                html += '<li class="list-group-item d-flex justify-content-between">';
+                html += '<span>' + d.nombre + '</span>';
+                html += '<span class="fw-bold">$' + d.monto.toFixed(2) + '</span>';
+                html += '</li>';
+            });
+            html += '</ul>';
+        }
+        $('#detalle').html(html);
+    });
+}
+</script>
 {% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Liquidación - Últimas 10 Fechas</h2>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <table class="table table-striped table-hover align-middle">
+      <thead class="table-dark">
+        <tr>
+          <th>Fecha</th>
+          <th>Total Préstamos</th>
+          <th>Total Abonos</th>
+          <th>Suma del Paquete</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in registros %}
+        <tr>
+          <td>{{ r.fecha }}</td>
+          <td>
+            <button class="btn btn-sm btn-warning" 
+                    onclick="verDetalle('prestamos','{{ r.fecha }}')">
+              ${{ '%.2f'|format(r.total_prestamos) }}
+            </button>
+          </td>
+          <td>
+            <button class="btn btn-sm btn-success" 
+                    onclick="verDetalle('abonos','{{ r.fecha }}')">
+              ${{ '%.2f'|format(r.total_abonos) }}
+            </button>
+          </td>
+          <td>
+            ${{ '%.2f'|format(r.suma_paquete) }}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="4" class="text-center text-muted">No hay registros disponibles</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Aquí se insertan los detalles con AJAX -->
+<div id="detalle" class="mt-4"></div>
+{% endblock %}
+                                        

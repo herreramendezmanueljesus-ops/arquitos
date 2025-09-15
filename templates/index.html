@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Inicio{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Clientes y Créditos</h2>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <table class="table table-striped table-hover align-middle">
+      <thead class="table-dark">
+        <tr>
+          <th>Orden</th>
+          <th>Cliente</th>
+          <th>Crédito</th>
+          <th>Abonar</th>
+          <th>Saldo</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in clientes %}
+        <tr>
+          <!-- Orden -->
+          <td>
+            <form action="{{ url_for('editar_orden') }}" method="POST" class="d-flex">
+              <input type="hidden" name="cliente_id" value="{{ c.id }}">
+              <input type="number" name="orden" value="{{ c.orden }}" min="1" 
+                     class="form-control form-control-sm me-2" style="width:70px;">
+              <button type="submit" class="btn btn-sm btn-primary">OK</button>
+            </form>
+          </td>
+
+          <!-- Cliente -->
+          <td>{{ c.nombre }}</td>
+
+          <!-- Crédito -->
+          <td>${{ '%.2f'|format(c.credito) }}</td>
+
+          <!-- Abonar -->
+          <td>
+            <form action="{{ url_for('agregar_abono') }}" method="POST" class="d-flex">
+              <input type="hidden" name="cliente_id" value="{{ c.id }}">
+              <input type="number" name="monto" step="0.01" 
+                     class="form-control form-control-sm me-2" style="width:90px;" placeholder="Monto">
+              <button type="submit" class="btn btn-sm btn-success">Abonar</button>
+            </form>
+          </td>
+
+          <!-- Saldo -->
+          <td>${{ '%.2f'|format(c.saldo) }}</td>
+
+          <!-- Acciones -->
+          <td>
+            <div class="btn-group btn-group-sm">
+              <a href="#" class="btn btn-outline-secondary">Editar</a>
+              <a href="#" class="btn btn-outline-danger">Eliminar</a>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center text-muted">No hay clientes registrados</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
