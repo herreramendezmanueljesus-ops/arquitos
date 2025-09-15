@@ -134,15 +134,14 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
-# =================== INICIO ===================
-if __name__ == "__main__":
-    db.create_all()  # Crear todas las tablas
-
-    # Crear usuario inicial si no existe
+# =================== INICIALIZACIÓN BASE DE DATOS ===================
+with app.app_context():
+    db.create_all()
     if not User.query.filter_by(username="mjesus40").first():
         user = User(username="mjesus40", password_hash=generate_password_hash("198409"))
         db.session.add(user)
         db.session.commit()
-        print("Usuario inicial creado: mjesus40 / 198409")
 
+# =================== INICIO ===================
+if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
