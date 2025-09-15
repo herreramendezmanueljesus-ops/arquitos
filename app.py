@@ -1,132 +1,155 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
+from sqlalchemy import and_
 
 app = Flask(__name__)
-app.secret_key = "clave_super_secreta"
+app.secret_key = "clave_secreta"
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///sistema.db"
+db = SQLAlchemy(app)
 
-# Usuario y contraseña definidos
+# -----------------------------
+# MODELOS
+# -----------------------------
+class Cliente(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    orden = db.Column(db.String(50), nullable=False)
+    nombre = db.Column(db.String(100), nullable=False)
+    direccion = db.Column(db.String(200), nullable=False)
+    creditos = db.relationship("Credito", backref="cliente", lazy=True)
+
+class Credito(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    monto = db.Column(db.Float, nullable=False)
+    plazo = db.Column(db.Integer, nullable=False)
+    interes = db.Column(db.Float, nullable=False)
+    fecha = db.Column(db.DateTime, default=datetime.utcnow)
+    cliente_id = db.Column(db.Integer, db.ForeignKey("cliente.id"), nullable=False)
+    abonos = db.relationship("Abono", backref="credito", lazy=True)
+
+class Abono(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    monto = db.Column(db.Float, nullable=False)
+    fecha = db.Column(db.DateTime, default=datetime.utcnow)
+    credito_id = db.Column(db.Integer, db.ForeignKey("credito.id"), nullable=False)
+
+# -----------------------------
+# USUARIO DE LOGIN FIJO
+# -----------------------------
 USUARIO = "mjesus40"
-CLAVE = "198409"
+CONTRASENA = "198409"
 
-
-# =========================
-# Rutas principales
-# =========================
+# -----------------------------
+# RUTAS
+# -----------------------------
 @app.route("/")
 def home():
-    if "user" in session:
-        return redirect(url_for("inicio"))
+    if "usuario" in session:
+        return redirect(url_for("dashboard"))
     return redirect(url_for("login"))
-
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    """Página de inicio de sesión"""
     if request.method == "POST":
-        usuario = request.form.get("username")
-        clave = request.form.get("password")
+        usuario = request.form["usuario"]
+        contrasena = request.form["contrasena"]
 
-        if usuario == USUARIO and clave == CLAVE:
-            session["user"] = usuario
-            flash("Bienvenido, sesión iniciada correctamente", "success")
-            return redirect(url_for("inicio"))
+        if usuario == USUARIO and contrasena == CONTRASENA:
+            session["usuario"] = usuario
+            return redirect(url_for("dashboard"))
         else:
             flash("Usuario o contraseña incorrectos", "danger")
 
     return render_template("login.html")
 
-
 @app.route("/logout")
 def logout():
-    """Cerrar sesión"""
-    session.clear()
-    flash("Has cerrado sesión", "info")
+    session.pop("usuario", None)
     return redirect(url_for("login"))
-
-
-# =========================
-# Vistas del sistema
-# =========================
-@app.route("/inicio")
-def inicio():
-    if "user" not in session:
-        return redirect(url_for("login"))
-    return render_template("inicio.html", usuario=session["user"])
-
 
 @app.route("/dashboard")
 def dashboard():
-    if "user" not in session:
+    if "usuario" not in session:
         return redirect(url_for("login"))
     return render_template("dashboard.html")
 
-
 @app.route("/nuevo_cliente", methods=["GET", "POST"])
 def nuevo_cliente():
-    if "user" not in session:
+    if "usuario" not in session:
         return redirect(url_for("login"))
 
     if request.method == "POST":
-        # Aquí procesarías los datos del formulario
-        nombre = request.form.get("nombre")
-        direccion = request.form.get("direccion")
-        orden = request.form.get("orden")
-        flash(f"Cliente {nombre} creado con éxito", "success")
+        orden = request.form["orden"]
+        nombre = request.form["nombre"]
+        direccion = request.form["direccion"]
+
+        cliente = Cliente(orden=orden, nombre=nombre, direccion=direccion)
+        db.session.add(cliente)
+        db.session.commit()
+        flash("Cliente agregado con éxito", "success")
         return redirect(url_for("dashboard"))
 
     return render_template("nuevo_cliente.html")
 
-
-@app.route("/editar_cliente", methods=["GET", "POST"])
-def editar_cliente():
-    if "user" not in session:
-        return redirect(url_for("login"))
-
-    if request.method == "POST":
-        flash("Cliente actualizado correctamente", "success")
-        return redirect(url_for("dashboard"))
-
-    return render_template("editar_cliente.html")
-
-
-@app.route("/liquidacion")
-def liquidacion():
-    if "user" not in session:
-        return redirect(url_for("login"))
-    return render_template("liquidacion.html")
-
-
-@app.route("/lodging")
-def lodging():
-    if "user" not in session:
-        return redirect(url_for("login"))
-    return render_template("lodging.html")
-
-
 @app.route("/nuevo_credito", methods=["GET", "POST"])
 def nuevo_credito():
-    if "user" not in session:
+    if "usuario" not in session:
         return redirect(url_for("login"))
 
+    clientes = Cliente.query.all()
+
     if request.method == "POST":
-        monto = request.form.get("monto")
-        plazo = request.form.get("plazo")
-        interes = request.form.get("interes")
-        flash(f"Crédito creado: ${monto} - Plazo {plazo} días", "success")
+        cliente_id = request.form["cliente_id"]
+        monto = request.form["monto"]
+        plazo = request.form["plazo"]
+        interes = request.form["interes"]
+
+        credito = Credito(
+            monto=float(monto),
+            plazo=int(plazo),
+            interes=float(interes),
+            cliente_id=int(cliente_id),
+        )
+        db.session.add(credito)
+        db.session.commit()
+        flash("Crédito agregado con éxito", "success")
         return redirect(url_for("dashboard"))
 
-    return render_template("nuevo_credito.html")
+    return render_template("nuevo_credito.html", clientes=clientes)
 
+@app.route("/liquidacion", methods=["GET", "POST"])
+def liquidacion():
+    if "usuario" not in session:
+        return redirect(url_for("login"))
 
-# =========================
-# Error handlers
-# =========================
-@app.errorhandler(404)
-def pagina_no_encontrada(e):
-    return render_template("404.html"), 404
+    abonos = []
+    fecha_inicio = fecha_fin = None
 
+    if request.method == "POST":
+        fecha_inicio = request.form["fecha_inicio"]
+        fecha_fin = request.form["fecha_fin"]
 
-# =========================
-# Inicialización
-# =========================
+        if fecha_inicio and fecha_fin:
+            inicio = datetime.strptime(fecha_inicio, "%Y-%m-%d")
+            fin = datetime.strptime(fecha_fin, "%Y-%m-%d")
+
+            abonos = (
+                Abono.query.join(Credito).join(Cliente).filter(
+                    and_(Abono.fecha >= inicio, Abono.fecha <= fin)
+                ).all()
+            )
+
+    return render_template(
+        "liquidacion.html",
+        abonos=abonos,
+        fecha_inicio=fecha_inicio,
+        fecha_fin=fecha_fin,
+    )
+
+# -----------------------------
+# MAIN
+# -----------------------------
 if __name__ == "__main__":
+    with app.app_context():
+        db.create_all()
     app.run(debug=True)

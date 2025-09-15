@@ -1,5 +1,35 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Dashboard</h2>
-<p>Aquí irán los reportes generales del sistema.</p>
+<h2>Reporte General del Sistema</h2>
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th>Orden</th>
+      <th>Cliente</th>
+      <th>Dirección</th>
+      <th>Monto Crédito</th>
+      <th>Saldo</th>
+      <th>Abonar</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for cliente in clientes %}
+      {% for credito in cliente.creditos %}
+      <tr>
+        <td>{{ cliente.orden }}</td>
+        <td>{{ cliente.nombre }}</td>
+        <td>{{ cliente.direccion }}</td>
+        <td>${{ credito.monto }}</td>
+        <td>${{ credito.saldo() }}</td>
+        <td>
+          <form action="{{ url_for('abonar', credito_id=credito.id) }}" method="post" class="d-flex">
+            <input type="number" step="0.01" name="monto" class="form-control me-2" placeholder="Monto">
+            <button class="btn btn-success" type="submit">Abonar</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    {% endfor %}
+  </tbody>
+</table>
 {% endblock %}

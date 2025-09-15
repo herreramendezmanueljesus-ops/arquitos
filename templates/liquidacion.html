@@ -1,14 +1,44 @@
-
-    {% extends "base.html" %}
+{% extends "base.html" %}
 {% block content %}
 <h2>Liquidación</h2>
-<p>Aquí podrás generar liquidaciones y buscar por rango de fechas.</p>
-<form method="GET">
-  <label for="fecha_inicio">Desde:</label>
-  <input type="date" name="fecha_inicio">
-  <label for="fecha_fin">Hasta:</label>
-  <input type="date" name="fecha_fin">
-  <button type="submit">Buscar</button>
+
+<form method="post" class="row g-3 mb-4">
+  <div class="col-md-5">
+    <label for="fecha_inicio" class="form-label">Fecha inicio</label>
+    <input type="date" name="fecha_inicio" class="form-control" value="{{ fecha_inicio }}">
+  </div>
+  <div class="col-md-5">
+    <label for="fecha_fin" class="form-label">Fecha fin</label>
+    <input type="date" name="fecha_fin" class="form-control" value="{{ fecha_fin }}">
+  </div>
+  <div class="col-md-2 d-flex align-items-end">
+    <button type="submit" class="btn btn-primary w-100">Buscar</button>
+  </div>
 </form>
+
+{% if abonos %}
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th>Cliente</th>
+      <th>Crédito (Monto)</th>
+      <th>Monto Abono</th>
+      <th>Fecha</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for abono in abonos %}
+    <tr>
+      <td>{{ abono.credito.cliente.nombre }}</td>
+      <td>${{ abono.credito.monto }}</td>
+      <td>${{ abono.monto }}</td>
+      <td>{{ abono.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% elif fecha_inicio and fecha_fin %}
+<p class="alert alert-warning">No se encontraron abonos entre esas fechas.</p>
+{% endif %}
 {% endblock %}
-                  
+
