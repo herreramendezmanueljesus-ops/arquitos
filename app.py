@@ -1,83 +1,132 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
-from flask_sqlalchemy import SQLAlchemy
-import os
 
-# =====================
-# CONFIGURACIÓN
-# =====================
 app = Flask(__name__)
-app.secret_key = "clave_super_secreta"  # Necesaria para sesiones y mensajes flash
+app.secret_key = "clave_super_secreta"
 
-# Base de datos SQLite en un archivo local (database.db)
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-db_path = os.path.join(BASE_DIR, "database.db")
-app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+# Usuario y contraseña definidos
+USUARIO = "mjesus40"
+CLAVE = "198409"
 
-db = SQLAlchemy(app)
 
-# =====================
-# MODELO DE USUARIOS
-# =====================
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)       # ID autoincremental
-    username = db.Column(db.String(50), unique=True, nullable=False)
-    password = db.Column(db.String(50), nullable=False)
-
-# Crear tablas automáticamente al arrancar
-with app.app_context():
-    db.create_all()
-    # Crear usuario por defecto si no existe
-    if not User.query.filter_by(username="mjesus40").first():
-        user = User(username="mjesus40", password="198409")
-        db.session.add(user)
-        db.session.commit()
-
-# =====================
-# RUTAS
-# =====================
-
-# Redirige a login si no hay sesión
+# =========================
+# Rutas principales
+# =========================
 @app.route("/")
-def index():
+def home():
     if "user" in session:
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("inicio"))
     return redirect(url_for("login"))
 
-# LOGIN
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    """Página de inicio de sesión"""
     if request.method == "POST":
-        username = request.form["username"]
-        password = request.form["password"]
+        usuario = request.form.get("username")
+        clave = request.form.get("password")
 
-        # Buscar usuario en la base de datos
-        user = User.query.filter_by(username=username, password=password).first()
-        if user:
-            session["user"] = user.username
-            flash("Has iniciado sesión correctamente.", "success")
-            return redirect(url_for("dashboard"))
+        if usuario == USUARIO and clave == CLAVE:
+            session["user"] = usuario
+            flash("Bienvenido, sesión iniciada correctamente", "success")
+            return redirect(url_for("inicio"))
         else:
-            flash("Usuario o contraseña incorrectos.", "danger")
+            flash("Usuario o contraseña incorrectos", "danger")
 
     return render_template("login.html")
 
-# PANEL PRINCIPAL (solo si hay sesión activa)
+
+@app.route("/logout")
+def logout():
+    """Cerrar sesión"""
+    session.clear()
+    flash("Has cerrado sesión", "info")
+    return redirect(url_for("login"))
+
+
+# =========================
+# Vistas del sistema
+# =========================
+@app.route("/inicio")
+def inicio():
+    if "user" not in session:
+        return redirect(url_for("login"))
+    return render_template("inicio.html", usuario=session["user"])
+
+
 @app.route("/dashboard")
 def dashboard():
     if "user" not in session:
         return redirect(url_for("login"))
-    return render_template("dashboard.html", user=session["user"])
+    return render_template("dashboard.html")
 
-# LOGOUT
-@app.route("/logout")
-def logout():
-    session.pop("user", None)
-    flash("Has cerrado sesión.", "info")
-    return redirect(url_for("login"))
 
-# =====================
-# ARRANQUE LOCAL
-# =====================
+@app.route("/nuevo_cliente", methods=["GET", "POST"])
+def nuevo_cliente():
+    if "user" not in session:
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        # Aquí procesarías los datos del formulario
+        nombre = request.form.get("nombre")
+        direccion = request.form.get("direccion")
+        orden = request.form.get("orden")
+        flash(f"Cliente {nombre} creado con éxito", "success")
+        return redirect(url_for("dashboard"))
+
+    return render_template("nuevo_cliente.html")
+
+
+@app.route("/editar_cliente", methods=["GET", "POST"])
+def editar_cliente():
+    if "user" not in session:
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        flash("Cliente actualizado correctamente", "success")
+        return redirect(url_for("dashboard"))
+
+    return render_template("editar_cliente.html")
+
+
+@app.route("/liquidacion")
+def liquidacion():
+    if "user" not in session:
+        return redirect(url_for("login"))
+    return render_template("liquidacion.html")
+
+
+@app.route("/lodging")
+def lodging():
+    if "user" not in session:
+        return redirect(url_for("login"))
+    return render_template("lodging.html")
+
+
+@app.route("/nuevo_credito", methods=["GET", "POST"])
+def nuevo_credito():
+    if "user" not in session:
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        monto = request.form.get("monto")
+        plazo = request.form.get("plazo")
+        interes = request.form.get("interes")
+        flash(f"Crédito creado: ${monto} - Plazo {plazo} días", "success")
+        return redirect(url_for("dashboard"))
+
+    return render_template("nuevo_credito.html")
+
+
+# =========================
+# Error handlers
+# =========================
+@app.errorhandler(404)
+def pagina_no_encontrada(e):
+    return render_template("404.html"), 404
+
+
+# =========================
+# Inicialización
+# =========================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(debug=True)

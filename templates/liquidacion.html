@@ -1,52 +1,14 @@
- {% extends "base.html" %}
-{% block title %}Liquidación{% endblock %}
 
-{% block head %}
-<script>
-function verDetalle(tipo, fecha) {
-    $.getJSON('/detalle/' + tipo + '?fecha=' + fecha, function(data) {
-        let html = '<ul>';
-        data.forEach(function(d) {
-            html += '<li>' + d.nombre + ': ' + d.monto +
-                    ' <form style="display:inline" method="POST" action="/eliminar/'+tipo+'/'+d.id+'">' +
-                    '<button type="submit">❌</button></form></li>';
-        });
-        html += '</ul>';
-        $('#detalle').html(html);
-    });
-}
-</script>
-{% endblock %}
-
+    {% extends "base.html" %}
 {% block content %}
 <h2>Liquidación</h2>
-
-<form method="POST">
-    <label>Desde: <input type="date" name="fecha1"></label>
-    <label>Hasta: <input type="date" name="fecha2"></label>
-    <button type="submit">Buscar</button>
+<p>Aquí podrás generar liquidaciones y buscar por rango de fechas.</p>
+<form method="GET">
+  <label for="fecha_inicio">Desde:</label>
+  <input type="date" name="fecha_inicio">
+  <label for="fecha_fin">Hasta:</label>
+  <input type="date" name="fecha_fin">
+  <button type="submit">Buscar</button>
 </form>
-
-<table border="1" cellpadding="5">
-    <thead>
-        <tr>
-            <th>Fecha</th>
-            <th>Total Préstamos</th>
-            <th>Total Abonos</th>
-            <th>Suma del Paquete</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for r in registros %}
-        <tr>
-            <td>{{ r[0] }}</td>
-            <td><button onclick="verDetalle('prestamos','{{ r[0] }}')">{{ r[1] }}</button></td>
-            <td><button onclick="verDetalle('abonos','{{ r[0] }}')">{{ r[2] }}</button></td>
-            <td>{{ r[3] }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-<div id="detalle"></div>
 {% endblock %}
-                      
+                  

@@ -1,21 +1,37 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Gestión de Créditos</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="UTF-8">
+  <title>Gestión de Créditos</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <header>
-        <h1>Gestión de Créditos</h1>
-        <nav>
-            <a href="{{ url_for('index') }}">Inicio</a>
-            <a href="{{ url_for('nuevo_cliente') }}">Nuevo Cliente</a>
-            <a href="{{ url_for('logout') }}">Salir</a>
-        </nav>
-    </header>
-    <main>
-        {% block content %}{% endblock %}
-    </main>
+  <header>
+    <h1>Gestión de Créditos</h1>
+    {% if session.get("user") %}
+    <nav>
+      <a href="{{ url_for('inicio') }}">Inicio</a>
+      <a href="{{ url_for('dashboard') }}">Dashboard</a>
+      <a href="{{ url_for('nuevo_cliente') }}">Nuevo Cliente</a>
+      <a href="{{ url_for('nuevo_credito') }}">Nuevo Crédito</a>
+      <a href="{{ url_for('liquidacion') }}">Liquidación</a>
+      <a href="{{ url_for('lodging') }}">Lodging</a>
+      <a href="{{ url_for('logout') }}">Cerrar Sesión</a>
+    </nav>
+    {% endif %}
+  </header>
+
+  <main>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class="flashes">
+          {% for category, message in messages %}
+            <li class="{{ category }}">{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
 </body>
 </html>
