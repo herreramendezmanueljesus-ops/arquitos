@@ -20,7 +20,7 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
 # Credenciales (fijas según tu preferencia previa)
-VALID_USER = "mjesus40"
+VALID_USER = "mjesus"
 VALID_PASS = "198409"
 
 # ---------------------------
@@ -194,8 +194,6 @@ def cliente_estado_class(cliente: Cliente):
         if cliente.saldo <= 0:
             return "table-success"
         if cliente.ultimo_abono_fecha == hoy:
-            # Abonó hoy: marcamos info (azul claro) — el requerimiento pedía verde dentro de la fila del input,
-            # aquí devolvemos clase para toda la fila si lo prefieres.
             return "table-info"
         if hoy > venc + timedelta(days=30):
             return "table-danger"
@@ -234,7 +232,6 @@ def logout():
 # ---------------------------
 @app.route("/")
 def raiz():
-    # si no autenticado lo mandamos al login, si sí, al index
     if "usuario" not in session:
         return redirect(url_for("login"))
     return redirect(url_for("index"))
@@ -243,9 +240,7 @@ def raiz():
 @app.route("/index")
 @login_required
 def index():
-    # asegurar liquidaciones hasta hoy
     asegurar_liquidaciones_contiguas()
-    # asegurar liquidacion de hoy (y devolverla para templates que esperan liq_hoy)
     liq_hoy = crear_liquidacion_para_fecha(date.today())
     clientes = Cliente.query.order_by(Cliente.orden).all()
     return render_template("index.html", clientes=clientes, hoy=date.today(), estado_class=cliente_estado_class, liq_hoy=liq_hoy)
@@ -254,7 +249,6 @@ def index():
 @app.route("/inicio")
 @login_required
 def inicio():
-    # alias
     return redirect(url_for("index"))
 
 
@@ -269,7 +263,7 @@ def dashboard():
 
 
 # ---------------------------
-# CLIENTES: CREAR / EDITAR / ELIMINAR
+# CLIENTES
 # ---------------------------
 @app.route("/nuevo_cliente", methods=["GET", "POST"])
 @login_required
@@ -302,11 +296,15 @@ def nuevo_cliente():
             fecha_creacion=date.today()
         )
         db.session.add(cliente)
-        db.session.flush()  # obtener id
+        db.session.flush()
 
-        # registrar préstamo de hoy
         prestamo = Prestamo(cliente_id=cliente.id, monto=monto, fecha=date.today())
         db.session.add(prestamo)
+
+        # Registrar movimiento en caja por préstamo (salida de caja)
+        mov_prestamo = MovimientoCaja(tipo="salida", monto=monto, descripcion=f"Préstamo {cliente.nombre}", fecha=date.today())
+        db.session.add(mov_prestamo)
+
         db.session.commit()
 
         actualizar_liquidacion_por_movimiento(date.today())
@@ -380,7 +378,6 @@ def abonar(cliente_id):
     ab = Abono(cliente_id=cliente.id, monto=monto_abono, fecha=date.today())
     db.session.add(ab)
 
-    # registrar en caja como entrada
     mov = MovimientoCaja(tipo="entrada", monto=monto_abono, descripcion=f"Abono {cliente.nombre}", fecha=date.today())
     db.session.add(mov)
 
@@ -395,23 +392,38 @@ def abonar(cliente_id):
 def eliminar_abono(abono_id):
     abono = Abono.query.get_or_404(abono_id)
     cliente = abono.cliente
+    fecha = abono.fecha
+
     if cliente:
         cliente.saldo += abono.monto
-        # limpiar ultimo_abono_fecha si no quedan abonos ese día para ese cliente
         if cliente.ultimo_abono_fecha == abono.fecha:
-            otros = Abono.query.filter(Abono.cliente_id == cliente.id, Abono.fecha == abono.fecha, Abono.id != abono.id).count()
+            otros = Abono.query.filter(
+                Abono.cliente_id == cliente.id,
+                Abono.fecha == abono.fecha,
+                Abono.id != abono.id
+            ).count()
             if otros == 0:
                 cliente.ultimo_abono_fecha = None
-    fecha = abono.fecha
+
+    # Buscar el movimiento de caja tipo "entrada" que corresponde a este abono y eliminarlo
+    mov = MovimientoCaja.query.filter_by(
+        tipo="entrada",
+        monto=abono.monto,
+        descripcion=f"Abono {cliente.nombre}",
+        fecha=fecha
+    ).first()
+    if mov:
+        db.session.delete(mov)
+
     db.session.delete(abono)
     db.session.commit()
     actualizar_liquidacion_por_movimiento(fecha)
-    flash("Abono eliminado y saldo repuesto", "success")
+    flash("Abono eliminado, saldo repuesto y caja ajustada", "success")
     return redirect(url_for("liquidacion"))
 
 
 # ---------------------------
-# REORDENAR (ACTUALIZAR ORDEN) - comportamiento: insertar en nuevo lugar, reasignar 1..n
+# REORDENAR CLIENTES
 # ---------------------------
 @app.route("/actualizar_orden/<int:cliente_id>", methods=["POST"])
 @login_required
@@ -428,7 +440,6 @@ def actualizar_orden(cliente_id):
         return redirect(url_for("index"))
 
     clientes = Cliente.query.order_by(Cliente.orden).all()
-    # remove cliente si está en la lista y luego insertarlo en posición indicada
     if cliente in clientes:
         clientes.remove(cliente)
 
@@ -444,13 +455,12 @@ def actualizar_orden(cliente_id):
 
 
 # ---------------------------
-# LIQUIDACIÓN / BUSCAR / RESUMEN
+# LIQUIDACIÓN
 # ---------------------------
 @app.route("/liquidacion")
 @login_required
 def liquidacion():
     asegurar_liquidaciones_contiguas()
-    # aseguramos liq hoy
     liq_hoy = crear_liquidacion_para_fecha(date.today())
 
     fecha_inicio = request.args.get("fecha_inicio")
@@ -461,28 +471,29 @@ def liquidacion():
         try:
             desde = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
             hasta = datetime.strptime(fecha_fin, "%Y-%m-%d").date()
-        except ValueError:
-            flash("Fechas inválidas", "warning")
+        except Exception:
+            flash("Formato de fechas inválido", "warning")
             return redirect(url_for("liquidacion"))
 
-        liquidaciones = Liquidacion.query.filter(Liquidacion.fecha.between(desde, hasta)).order_by(Liquidacion.fecha.desc()).all()
-        total_abonos = sum(l.total_abonos for l in liquidaciones)
-        total_prestamos = sum(l.total_prestamos for l in liquidaciones)
-        caja_final = liquidaciones[0].caja if liquidaciones else 0.0
-        paquete_final = liquidaciones[0].paquete if liquidaciones else 0.0
+        liquidaciones = Liquidacion.query.filter(
+            Liquidacion.fecha >= desde,
+            Liquidacion.fecha <= hasta
+        ).order_by(Liquidacion.fecha).all()
 
-        resumen_rango = {
-            "desde": desde,
-            "hasta": hasta,
-            "total_abonos": total_abonos,
-            "total_prestamos": total_prestamos,
-            "caja": caja_final,
-            "paquete": paquete_final
-        }
-        return render_template("liquidacion.html", liquidaciones=liquidaciones, resumen_rango=resumen_rango, hoy=date.today(), liq_hoy=liq_hoy)
-    else:
-        ultimas = Liquidacion.query.order_by(Liquidacion.fecha.desc()).limit(10).all()
-        return render_template("liquidacion.html", liquidaciones=ultimas, resumen_rango=None, hoy=date.today(), liq_hoy=liq_hoy)
+        if liquidaciones:
+            total_abonos = sum(l.total_abonos for l in liquidaciones)
+            total_prestamos = sum(l.total_prestamos for l in liquidaciones)
+            total_paquete = liquidaciones[-1].paquete
+            resumen_rango = {
+                "desde": desde,
+                "hasta": hasta,
+                "total_abonos": total_abonos,
+                "total_prestamos": total_prestamos,
+                "total_paquete": total_paquete
+            }
+
+    liquidaciones = Liquidacion.query.order_by(Liquidacion.fecha.desc()).all()
+    return render_template("liquidacion.html", liq_hoy=liq_hoy, liquidaciones=liquidaciones, resumen_rango=resumen_rango)
 
 
 # ---------------------------
@@ -510,6 +521,40 @@ def detalle_prestamos(fecha):
         return redirect(url_for("liquidacion"))
     prestamos = Prestamo.query.filter_by(fecha=f).all()
     return render_template("detalle_prestamos.html", prestamos=prestamos, fecha=f)
+
+
+# ---------------------------
+# ELIMINAR PRÉSTAMO (NUEVO)
+# ---------------------------
+@app.route("/eliminar_prestamo/<int:prestamo_id>", methods=["POST"])
+@login_required
+def eliminar_prestamo(prestamo_id):
+    prestamo = Prestamo.query.get_or_404(prestamo_id)
+    cliente = prestamo.cliente
+    fecha = prestamo.fecha
+
+    if cliente:
+        # Si el préstamo estaba sumado al saldo del cliente, restarlo
+        # (ej: préstamo inicial que aumentó saldo). Evitar saldo negativo.
+        cliente.saldo -= prestamo.monto
+        if cliente.saldo < 0:
+            cliente.saldo = 0
+
+    # Buscar y eliminar el movimiento de caja tipo "salida" correspondiente al préstamo
+    mov_prestamo = MovimientoCaja.query.filter_by(
+        tipo="salida",
+        monto=prestamo.monto,
+        descripcion=f"Préstamo {cliente.nombre}",
+        fecha=fecha
+    ).first()
+    if mov_prestamo:
+        db.session.delete(mov_prestamo)
+
+    db.session.delete(prestamo)
+    db.session.commit()
+    actualizar_liquidacion_por_movimiento(fecha)
+    flash("Préstamo eliminado correctamente y caja ajustada", "success")
+    return redirect(url_for("liquidacion"))
 
 
 @app.route("/api/detalle/abonos/<fecha>")
