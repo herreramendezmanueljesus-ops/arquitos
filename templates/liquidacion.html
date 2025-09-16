@@ -1,30 +1,85 @@
+
 {% extends "base.html" %}
+{% block title %}Liquidación{% endblock %}
 {% block content %}
-<h3 class="mb-3">Liquidación</h3>
-<form method="POST" class="row g-3 mb-4">
-    <div class="col-md-5">
-        <label for="fecha_inicio" class="form-label">Desde</label>
-        <input type="date" name="fecha_inicio" id="fecha_inicio" class="form-control" required>
-    </div>
-    <div class="col-md-5">
-        <label for="fecha_fin" class="form-label">Hasta</label>
-        <input type="date" name="fecha_fin" id="fecha_fin" class="form-control" required>
-    </div>
-    <div class="col-md-2 d-flex align-items-end">
-        <button type="submit" class="btn btn-dark w-100">Generar</button>
-    </div>
+<h2>Liquidación</h2>
+
+<form method="post" class="row g-3 mb-4">
+  <div class="col-auto">
+    <label for="fecha_inicio" class="form-label">Desde</label>
+    <input type="date" class="form-control" id="fecha_inicio" name="fecha_inicio" required>
+  </div>
+  <div class="col-auto">
+    <label for="fecha_fin" class="form-label">Hasta</label>
+    <input type="date" class="form-control" id="fecha_fin" name="fecha_fin" required>
+  </div>
+  <div class="col-auto align-self-end">
+    <button type="submit" class="btn btn-primary">Buscar</button>
+  </div>
 </form>
 
 {% if fecha_inicio and fecha_fin %}
-<div class="card p-3">
-    <h5>Resumen del {{ fecha_inicio.date() }} al {{ fecha_fin.date() }}</h5>
-    <ul class="list-group">
-        <li class="list-group-item">💵 Total Abonos: <b>${{ '%.2f'|format(total_abonos) }}</b></li>
-        <li class="list-group-item">💰 Total Préstamos: <b>${{ '%.2f'|format(total_prestamos) }}</b></li>
-        <li class="list-group-item">📦 Paquete (suma de saldos): <b>${{ '%.2f'|format(total_abonos + total_prestamos) }}</b></li>
-        <li class="list-group-item">🏦 Dinero en Caja: <b>${{ '%.2f'|format(caja) }}</b></li>
-    </ul>
-</div>
+  <h5>Resultados del {{ fecha_inicio.strftime('%d/%m/%Y') }} al {{ fecha_fin.strftime('%d/%m/%Y') }}</h5>
+
+  <div class="row mt-4">
+    <div class="col-md-6">
+      <h4>Préstamos</h4>
+      <table class="table table-sm table-bordered">
+        <thead>
+          <tr>
+            <th>Código</th>
+            <th>Cliente</th>
+            <th>Monto</th>
+            <th>Fecha</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in prestamos %}
+          <tr>
+            <td>{{ p.codigo }}</td>
+            <td>{{ p.nombre }}</td>
+            <td>{{ "%.2f"|format(p.monto) }}</td>
+            <td>{{ p.fecha_creacion.strftime('%d/%m/%Y') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p><strong>Total préstamos:</strong> {{ "%.2f"|format(total_prestamos) }}</p>
+    </div>
+
+    <div class="col-md-6">
+      <h4>Abonos</h4>
+      <table class="table table-sm table-bordered">
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Monto</th>
+            <th>Fecha</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in abonos %}
+          <tr>
+            <td>{{ a.cliente.nombre }}</td>
+            <td>{{ "%.2f"|format(a.monto) }}</td>
+            <td>{{ a.fecha.strftime('%d/%m/%Y') }}</td>
+            <td>
+              <form action="{{ url_for('eliminar_abono', abono_id=a.id) }}" method="post" onsubmit="return confirm('Eliminar abono?');">
+                <button class="btn btn-sm btn-danger" type="submit">Eliminar</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p><strong>Total abonos:</strong> {{ "%.2f"|format(total_abonos) }}</p>
+    </div>
+  </div>
+
+  <div class="alert alert-info mt-4">
+    <h4 class="mb-0">Caja: {{ "%.2f"|format(caja) }}</h4>
+  </div>
 {% endif %}
 {% endblock %}
 
