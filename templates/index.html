@@ -24,6 +24,7 @@
           <th>Plazo (días)</th>
           <th>Interés (%)</th>
           <th>Saldo</th>
+          <th>C (Abono hoy)</th> <!-- 👈 nueva columna -->
           <th>Fecha creación</th>
           <th>Acciones</th>
         </tr>
@@ -44,6 +45,13 @@
             <td>{{ c.plazo }}</td>
             <td>{{ "%.2f"|format(c.interes) }}</td>
             <td>{{ "%.2f"|format(c.saldo) }}</td>
+            <td>
+              {% if c.abono_hoy %}
+                ✅
+              {% else %}
+                ❌
+              {% endif %}
+            </td>
             <td>{{ c.fecha_creacion.strftime("%d/%m/%Y") }}</td>
             <td>
               <form action="{{ url_for('abonar', cliente_id=c.id) }}" method="post" class="d-flex mb-1">
