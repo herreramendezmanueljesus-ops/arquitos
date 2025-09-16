@@ -1,44 +1,30 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Liquidación</h2>
-
-<form method="post" class="row g-3 mb-4">
-  <div class="col-md-5">
-    <label for="fecha_inicio" class="form-label">Fecha inicio</label>
-    <input type="date" name="fecha_inicio" class="form-control" value="{{ fecha_inicio }}">
-  </div>
-  <div class="col-md-5">
-    <label for="fecha_fin" class="form-label">Fecha fin</label>
-    <input type="date" name="fecha_fin" class="form-control" value="{{ fecha_fin }}">
-  </div>
-  <div class="col-md-2 d-flex align-items-end">
-    <button type="submit" class="btn btn-primary w-100">Buscar</button>
-  </div>
+<h3 class="mb-3">Liquidación</h3>
+<form method="POST" class="row g-3 mb-4">
+    <div class="col-md-5">
+        <label for="fecha_inicio" class="form-label">Desde</label>
+        <input type="date" name="fecha_inicio" id="fecha_inicio" class="form-control" required>
+    </div>
+    <div class="col-md-5">
+        <label for="fecha_fin" class="form-label">Hasta</label>
+        <input type="date" name="fecha_fin" id="fecha_fin" class="form-control" required>
+    </div>
+    <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-dark w-100">Generar</button>
+    </div>
 </form>
 
-{% if abonos %}
-<table class="table table-bordered">
-  <thead>
-    <tr>
-      <th>Cliente</th>
-      <th>Crédito (Monto)</th>
-      <th>Monto Abono</th>
-      <th>Fecha</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for abono in abonos %}
-    <tr>
-      <td>{{ abono.credito.cliente.nombre }}</td>
-      <td>${{ abono.credito.monto }}</td>
-      <td>${{ abono.monto }}</td>
-      <td>{{ abono.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% elif fecha_inicio and fecha_fin %}
-<p class="alert alert-warning">No se encontraron abonos entre esas fechas.</p>
+{% if fecha_inicio and fecha_fin %}
+<div class="card p-3">
+    <h5>Resumen del {{ fecha_inicio.date() }} al {{ fecha_fin.date() }}</h5>
+    <ul class="list-group">
+        <li class="list-group-item">💵 Total Abonos: <b>${{ '%.2f'|format(total_abonos) }}</b></li>
+        <li class="list-group-item">💰 Total Préstamos: <b>${{ '%.2f'|format(total_prestamos) }}</b></li>
+        <li class="list-group-item">📦 Paquete (suma de saldos): <b>${{ '%.2f'|format(total_abonos + total_prestamos) }}</b></li>
+        <li class="list-group-item">🏦 Dinero en Caja: <b>${{ '%.2f'|format(caja) }}</b></li>
+    </ul>
+</div>
 {% endif %}
 {% endblock %}
 
