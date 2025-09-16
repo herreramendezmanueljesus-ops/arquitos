@@ -1,85 +1,71 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="container mt-4">
-    <h2 class="mb-4">Liquidación</h2>
+    <h2 class="mb-4">Historial de Liquidaciones</h2>
 
-    <form method="POST" class="row g-3 mb-4">
-        <div class="col-md-5">
-            <label for="fecha_inicio" class="form-label">Fecha inicio</label>
-            <input type="date" class="form-control" name="fecha_inicio" required>
+    <!-- Formulario de búsqueda por rango -->
+    <form method="GET" action="{{ url_for('liquidacion') }}" class="row g-3 mb-4">
+        <div class="col-md-4">
+            <label for="fecha_inicio" class="form-label">Desde</label>
+            <input type="date" class="form-control" id="fecha_inicio" name="fecha_inicio"
+                   value="{{ request.args.get('fecha_inicio', '') }}">
         </div>
-        <div class="col-md-5">
-            <label for="fecha_fin" class="form-label">Fecha fin</label>
-            <input type="date" class="form-control" name="fecha_fin" required>
+        <div class="col-md-4">
+            <label for="fecha_fin" class="form-label">Hasta</label>
+            <input type="date" class="form-control" id="fecha_fin" name="fecha_fin"
+                   value="{{ request.args.get('fecha_fin', '') }}">
         </div>
-        <div class="col-md-2 d-flex align-items-end">
+        <div class="col-md-4 d-flex align-items-end">
             <button type="submit" class="btn btn-primary w-100">Buscar</button>
         </div>
     </form>
 
-    {% if prestamos or abonos %}
-    <h4>Préstamos</h4>
-    <table class="table table-bordered table-striped mb-4">
-        <thead class="table-dark">
-            <tr>
-                <th>Código</th>
-                <th>Cliente</th>
-                <th>Monto</th>
-                <th>Fecha</th>
-                <th>Acción</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for p in prestamos %}
-            <tr>
-                <td>{{ p.codigo }}</td>
-                <td>{{ p.nombre }}</td>
-                <td>${{ "%.2f"|format(p.monto) }}</td>
-                <td>{{ p.fecha_creacion.strftime("%Y-%m-%d") }}</td>
-                <td>
-                    <form action="{{ url_for('eliminar_cliente', cliente_id=p.id) }}" method="POST" 
-                          onsubmit="return confirm('¿Seguro que quieres eliminar este préstamo y todos sus abonos?')">
-                        <button type="submit" class="btn btn-danger btn-sm">❌</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-
-    <h4>Abonos</h4>
+    <!-- Tabla de liquidaciones -->
     <table class="table table-bordered table-striped">
         <thead class="table-dark">
             <tr>
-                <th>Cliente</th>
-                <th>Monto</th>
                 <th>Fecha</th>
-                <th>Acción</th>
+                <th>Préstamos</th>
+                <th>Abonos</th>
+                <th>Caja</th>
+                <th>Paquete</th>
             </tr>
         </thead>
         <tbody>
-            {% for a in abonos %}
+            {% for liq in liquidaciones %}
             <tr>
-                <td>{{ a.cliente.nombre }}</td>
-                <td>${{ "%.2f"|format(a.monto) }}</td>
-                <td>{{ a.fecha.strftime("%Y-%m-%d") }}</td>
+                <td>{{ liq.fecha }}</td>
+
+                <!-- Préstamos clickeables -->
                 <td>
-                    <form action="{{ url_for('eliminar_abono', abono_id=a.id) }}" method="POST"
-                          onsubmit="return confirm('¿Seguro que quieres eliminar este abono?')">
-                        <button type="submit" class="btn btn-danger btn-sm">❌</button>
-                    </form>
+                    <a href="{{ url_for('detalle_prestamos', fecha=liq.fecha) }}" class="text-decoration-none">
+                        {{ liq.total_prestamos }}
+                    </a>
                 </td>
+
+                <!-- Abonos clickeables -->
+                <td>
+                    <a href="{{ url_for('detalle_abonos', fecha=liq.fecha) }}" class="text-decoration-none">
+                        {{ liq.total_abonos }}
+                    </a>
+                </td>
+
+                <td>{{ liq.caja }}</td>
+                <td>{{ liq.paquete }}</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 
-    <div class="mt-4">
-        <p><strong>Total Préstamos:</strong> ${{ "%.2f"|format(total_prestamos) }}</p>
-        <p><strong>Total Abonos:</strong> ${{ "%.2f"|format(total_abonos) }}</p>
-        <p><strong>Caja:</strong> ${{ "%.2f"|format(caja) }}</p>
+    <!-- Si hay búsqueda por rango -->
+    {% if resumen_rango %}
+    <div class="alert alert-info mt-4">
+        <h5>Resumen del {{ resumen_rango.desde }} al {{ resumen_rango.hasta }}</h5>
+        <p><strong>Préstamos:</strong> {{ resumen_rango.total_prestamos }}</p>
+        <p><strong>Abonos:</strong> {{ resumen_rango.total_abonos }}</p>
+        <p><strong>Caja:</strong> {{ resumen_rango.caja }}</p>
+        <p><strong>Paquete:</strong> {{ resumen_rango.paquete }}</p>
     </div>
     {% endif %}
 </div>
 {% endblock %}
-

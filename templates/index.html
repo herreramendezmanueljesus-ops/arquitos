@@ -46,8 +46,23 @@
                     </form>
                 </td>
 
-                <!-- Saldo -->
-                <td>{{ cliente.saldo }}</td>
+                <!-- Saldo con colores -->
+                <td>
+                    {% set hoy = date.today() %}
+                    {% if cliente.fecha_limite %}
+                        {% if hoy < cliente.fecha_limite %}
+                            <span class="badge bg-success">{{ cliente.saldo }}</span>
+                        {% elif hoy == cliente.fecha_limite %}
+                            <span class="badge bg-warning text-dark">{{ cliente.saldo }}</span>
+                        {% elif hoy > cliente.fecha_limite + timedelta(days=30) %}
+                            <span class="badge bg-danger">{{ cliente.saldo }}</span>
+                        {% else %}
+                            <span class="badge bg-warning text-dark">{{ cliente.saldo }}</span>
+                        {% endif %}
+                    {% else %}
+                        {{ cliente.saldo }}
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>
