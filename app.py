@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, abort
+from flask import Flask, render_template, request, redirect, url_for, session, flash
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import random
@@ -24,7 +24,7 @@ class Cliente(db.Model):
     saldo = db.Column(db.Float, nullable=False)
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
 
-    abonos = db.relationship("Abono", backref="cliente", lazy=True, cascade="all, delete-orphan")
+    abonos = db.relationship("Abono", backref="cliente", lazy=True)
 
 class Abono(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -41,8 +41,8 @@ CLAVE = "198409"
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        usuario = request.form.get("usuario", "")
-        clave = request.form.get("clave", "")
+        usuario = request.form["usuario"]
+        clave = request.form["clave"]
         if usuario == USUARIO and clave == CLAVE:
             session["usuario"] = usuario
             return redirect(url_for("index"))
@@ -66,63 +66,35 @@ def raiz():
 def index():
     if "usuario" not in session:
         return redirect(url_for("login"))
+
     clientes = Cliente.query.order_by(Cliente.orden).all()
     return render_template("index.html", clientes=clientes)
 
-@app.route("/inicio")
-def inicio():
-    # alias /inicio -> listado o dashboard sencillo
-    if "usuario" not in session:
-        return redirect(url_for("login"))
-    clientes = Cliente.query.order_by(Cliente.orden).all()
-    return render_template("inicio.html", clientes=clientes)
-
-@app.route("/dashboard")
-def dashboard():
-    if "usuario" not in session:
-        return redirect(url_for("login"))
-    total_clientes = Cliente.query.count()
-    total_abonos = db.session.query(db.func.coalesce(db.func.sum(Abono.monto), 0)).scalar()
-    total_prestamos = db.session.query(db.func.coalesce(db.func.sum(Cliente.monto), 0)).scalar()
-    return render_template("dashboard.html", total_clientes=total_clientes,
-                           total_abonos=total_abonos, total_prestamos=total_prestamos)
-
-# ==============================
-# NUEVO CLIENTE / EDITAR
-# ==============================
 @app.route("/nuevo_cliente", methods=["GET", "POST"])
 def nuevo_cliente():
     if "usuario" not in session:
         return redirect(url_for("login"))
 
     if request.method == "POST":
-        try:
-            orden = int(request.form.get("orden", 0))
-        except ValueError:
-            flash("Orden inválido", "warning")
-            return redirect(url_for("nuevo_cliente"))
-        nombre = request.form.get("nombre", "").strip()
-        direccion = request.form.get("direccion", "").strip()
-        try:
-            monto = float(request.form.get("monto", 0))
-            plazo = int(request.form.get("plazo", 0))
-            interes = float(request.form.get("interes", 0))
-        except ValueError:
-            flash("Monto, plazo o interés inválidos", "warning")
-            return redirect(url_for("nuevo_cliente"))
+        orden = request.form["orden"]
+        nombre = request.form["nombre"]
+        direccion = request.form["direccion"]
+        monto = float(request.form["monto"])
+        plazo = int(request.form["plazo"])
+        interes = float(request.form["interes"])
 
-        # Generar código único (6 dígitos numéricos)
-        codigo = ''.join(random.choices("0123456789", k=6))
+        # Generar código aleatorio único (solo números)
+        codigo = str(random.randint(100000, 999999))
         while Cliente.query.filter_by(codigo=codigo).first():
-            codigo = ''.join(random.choices("0123456789", k=6))
+            codigo = str(random.randint(100000, 999999))
 
-        # Validar duplicado por nombre (opcional)
+        # Validar duplicado por nombre
         if Cliente.query.filter_by(nombre=nombre).first():
-            flash("El cliente ya existe. Use el código asignado o edite el existente.", "warning")
+            flash("El cliente ya existe. Use el código asignado.", "warning")
             return redirect(url_for("nuevo_cliente"))
 
-        # Calcular saldo con interés
-        saldo_total = monto + (monto * interes / 100)
+        # Saldo inicial = monto + interés
+        saldo_inicial = monto + (monto * interes / 100)
 
         cliente = Cliente(
             codigo=codigo,
@@ -132,7 +104,7 @@ def nuevo_cliente():
             monto=monto,
             plazo=plazo,
             interes=interes,
-            saldo=saldo_total
+            saldo=saldo_inicial
         )
         db.session.add(cliente)
         db.session.commit()
@@ -141,43 +113,13 @@ def nuevo_cliente():
 
     return render_template("nuevo_cliente.html")
 
-@app.route("/editar_cliente/<int:cliente_id>", methods=["GET", "POST"])
-def editar_cliente(cliente_id):
-    if "usuario" not in session:
-        return redirect(url_for("login"))
-    cliente = Cliente.query.get_or_404(cliente_id)
-    if request.method == "POST":
-        cliente.orden = int(request.form.get("orden", cliente.orden))
-        cliente.nombre = request.form.get("nombre", cliente.nombre)
-        cliente.direccion = request.form.get("direccion", cliente.direccion)
-        cliente.monto = float(request.form.get("monto", cliente.monto))
-        cliente.plazo = int(request.form.get("plazo", cliente.plazo))
-        cliente.interes = float(request.form.get("interes", cliente.interes))
-
-        # Recalcular saldo inicial considerando lo que ya existe:
-        # si quieres reemplazar el saldo por el nuevo cálculo, descomenta la línea siguiente.
-        # Por ahora NO sobrescribimos saldo existente para no romper historiales.
-        # cliente.saldo = cliente.monto + (cliente.monto * cliente.interes / 100)
-
-        db.session.commit()
-        flash("Cliente actualizado correctamente", "success")
-        return redirect(url_for("index"))
-
-    return render_template("editar_cliente.html", cliente=cliente)
-
-# ==============================
-# ABONOS
-# ==============================
 @app.route("/abonar/<int:cliente_id>", methods=["POST"])
 def abonar(cliente_id):
     if "usuario" not in session:
         return redirect(url_for("login"))
+
     cliente = Cliente.query.get_or_404(cliente_id)
-    try:
-        monto_abono = float(request.form.get("monto_abono", 0))
-    except ValueError:
-        flash("Abono inválido", "warning")
-        return redirect(url_for("index"))
+    monto_abono = float(request.form["monto_abono"])
 
     if monto_abono <= 0:
         flash("El abono debe ser mayor a 0", "warning")
@@ -188,84 +130,37 @@ def abonar(cliente_id):
         return redirect(url_for("index"))
 
     cliente.saldo -= monto_abono
-    ab = Abono(cliente_id=cliente.id, monto=monto_abono)
-    db.session.add(ab)
+    abono = Abono(cliente_id=cliente.id, monto=monto_abono)
+    db.session.add(abono)
     db.session.commit()
+
     flash("Abono registrado correctamente", "success")
     return redirect(url_for("index"))
 
-# ==============================
-# ELIMINAR CLIENTE Y ABONO
-# ==============================
-@app.route("/eliminar_cliente/<int:cliente_id>", methods=["POST"])
-def eliminar_cliente(cliente_id):
-    if "usuario" not in session:
-        return redirect(url_for("login"))
-
-    cliente = Cliente.query.get_or_404(cliente_id)
-    db.session.delete(cliente)
-    db.session.commit()
-    flash("Cliente y sus abonos eliminados correctamente", "success")
-    return redirect(url_for("index"))
-
-@app.route("/eliminar_abono/<int:abono_id>", methods=["POST"])
-def eliminar_abono(abono_id):
-    if "usuario" not in session:
-        return redirect(url_for("login"))
-
-    abono = Abono.query.get_or_404(abono_id)
-    # Reponer el saldo al cliente
-    if abono.cliente:
-        abono.cliente.saldo += abono.monto
-    db.session.delete(abono)
-    db.session.commit()
-    flash("Abono eliminado correctamente y saldo repuesto", "success")
-    return redirect(url_for("index"))
-
-# ==============================
-# ACTUALIZAR ORDEN
-# ==============================
 @app.route("/actualizar_orden/<int:cliente_id>", methods=["POST"])
 def actualizar_orden(cliente_id):
     if "usuario" not in session:
         return redirect(url_for("login"))
 
     cliente = Cliente.query.get_or_404(cliente_id)
-    try:
-        nuevo_orden = int(request.form.get("nuevo_orden", cliente.orden))
-    except ValueError:
-        flash("Orden inválido", "warning")
-        return redirect(url_for("index"))
+    nuevo_orden = int(request.form["orden"])
 
     if nuevo_orden <= 0:
         flash("El orden debe ser mayor que 0", "warning")
         return redirect(url_for("index"))
 
-    if cliente.orden == nuevo_orden:
-        flash("No hubo cambios en el orden", "info")
-        return redirect(url_for("index"))
-
-    # Reordenamiento: sacar cliente, insertar en nueva posición y reasignar órdenes
+    # Ajustar órdenes de otros clientes
     clientes = Cliente.query.order_by(Cliente.orden).all()
-    if cliente not in clientes:
-        flash("Error al reorganizar", "danger")
-        return redirect(url_for("index"))
+    for c in clientes:
+        if c.id != cliente.id and c.orden >= nuevo_orden:
+            c.orden += 1
 
-    clientes.remove(cliente)
-    insert_index = min(nuevo_orden - 1, len(clientes))
-    clientes.insert(insert_index, cliente)
-
-    # reasigna de 1...n
-    for idx, c in enumerate(clientes, start=1):
-        c.orden = idx
-
+    cliente.orden = nuevo_orden
     db.session.commit()
+
     flash("Orden actualizado correctamente", "success")
     return redirect(url_for("index"))
 
-# ==============================
-# LIQUIDACIÓN
-# ==============================
 @app.route("/liquidacion", methods=["GET", "POST"])
 def liquidacion():
     if "usuario" not in session:
@@ -282,7 +177,7 @@ def liquidacion():
     if request.method == "POST":
         fecha_inicio = datetime.strptime(request.form["fecha_inicio"], "%Y-%m-%d")
         fecha_fin = datetime.strptime(request.form["fecha_fin"], "%Y-%m-%d")
-        # inclusive day: add time bounds if needed (here exact filter as before)
+
         abonos = Abono.query.filter(Abono.fecha >= fecha_inicio, Abono.fecha <= fecha_fin).all()
         prestamos = Cliente.query.filter(Cliente.fecha_creacion >= fecha_inicio, Cliente.fecha_creacion <= fecha_fin).all()
 
@@ -302,14 +197,11 @@ def liquidacion():
     )
 
 # ==============================
-# HANDLERS Y INICIO DB
+# INICIO DB
 # ==============================
-@app.errorhandler(404)
-def page_not_found(e):
-    return render_template("404.html"), 404
-
 with app.app_context():
     db.create_all()
 
 if __name__ == "__main__":
     app.run(debug=True)
+
