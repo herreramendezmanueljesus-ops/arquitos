@@ -1,42 +1,46 @@
+# app.py - Versión completa, unificada y robusta
+import os
+import random
+from datetime import date, datetime, timedelta
+
 from flask import (
-    Flask, render_template, request, redirect, url_for, session, flash, jsonify
+    Flask, render_template, request, redirect, url_for, flash, session, jsonify
 )
 from flask_sqlalchemy import SQLAlchemy
 from functools import wraps
-from datetime import datetime, date, timedelta
-import random
 
+# ---------------------------
+# Configuración
+# ---------------------------
 app = Flask(__name__)
-app.secret_key = "supersecret_change_this"
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///creditos.db"
+app.secret_key = os.environ.get("APP_SECRET", "clave_secreta_local_cámbiala")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///creditos.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
+# Credenciales (fijas según tu preferencia previa)
+VALID_USER = "mjesus40"
+VALID_PASS = "198409"
 
-# -----------------------
+# ---------------------------
 # MODELOS
-# -----------------------
+# ---------------------------
 class Cliente(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    codigo = db.Column(db.String(10), unique=True, nullable=False)   # 6 dígitos numéricos
+    codigo = db.Column(db.String(10), unique=True, nullable=False)   # 6 dígitos numéricos (puede alargarse)
     orden = db.Column(db.Integer, nullable=False, default=0)
-    nombre = db.Column(db.String(100), nullable=False)
-    direccion = db.Column(db.String(200), nullable=True)
-    monto = db.Column(db.Float, nullable=False, default=0.0)         # monto prestado inicial
+    nombre = db.Column(db.String(200), nullable=False)
+    direccion = db.Column(db.String(300), nullable=True)
+    monto = db.Column(db.Float, nullable=False, default=0.0)         # monto prestado original
     plazo = db.Column(db.Integer, nullable=False, default=30)        # plazo en días
     interes = db.Column(db.Float, nullable=False, default=0.0)      # porcentaje
     saldo = db.Column(db.Float, nullable=False, default=0.0)        # saldo pendiente
     fecha_creacion = db.Column(db.Date, default=date.today)
-    ultimo_abono_fecha = db.Column(db.Date, nullable=True)          # fecha del último abono
+    ultimo_abono_fecha = db.Column(db.Date, nullable=True)          # para marcar abono de hoy
 
     abonos = db.relationship("Abono", backref="cliente", lazy=True, cascade="all, delete-orphan")
     prestamos = db.relationship("Prestamo", backref="cliente", lazy=True, cascade="all, delete-orphan")
-
-    # 👉 Nueva propiedad para saber si abonó hoy
-    @property
-    def abono_hoy(self):
-        return self.ultimo_abono_fecha == date.today()
 
 
 class Abono(db.Model):
@@ -70,12 +74,9 @@ class MovimientoCaja(db.Model):
     fecha = db.Column(db.Date, default=date.today)
 
 
-# -----------------------
-# LOGIN (fijo)
-# -----------------------
-VALID_USER = "mjesus40"
-VALID_PASS = "198409"
-
+# ---------------------------
+# DECORADORES / HELPERS
+# ---------------------------
 def login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
@@ -85,29 +86,6 @@ def login_required(f):
     return wrapper
 
 
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        usuario = request.form.get("usuario", "").strip()
-        clave = request.form.get("clave", "").strip()
-        if usuario == VALID_USER and clave == VALID_PASS:
-            session["usuario"] = usuario
-            flash("Inicio de sesión correcto", "success")
-            return redirect(url_for("index"))
-        flash("Usuario o contraseña incorrectos", "danger")
-    return render_template("login.html")
-
-
-@app.route("/logout")
-def logout():
-    session.pop("usuario", None)
-    flash("Sesión cerrada", "info")
-    return redirect(url_for("login"))
-
-
-# -----------------------
-# HELPERS: liquidación diaria & utilidades
-# -----------------------
 def generar_codigo_numerico():
     code = ''.join(random.choices("0123456789", k=6))
     while Cliente.query.filter_by(codigo=code).first():
@@ -115,67 +93,89 @@ def generar_codigo_numerico():
     return code
 
 
+def paquete_total_actual():
+    """Suma los saldos de todos los clientes (paquete)."""
+    s = db.session.query(db.func.coalesce(db.func.sum(Cliente.saldo), 0)).scalar()
+    return float(s or 0.0)
+
+
+def movimientos_caja_totales(fecha):
+    entrada = db.session.query(db.func.coalesce(db.func.sum(MovimientoCaja.monto), 0)).filter(
+        MovimientoCaja.fecha == fecha, MovimientoCaja.tipo == "entrada").scalar() or 0.0
+    salida = db.session.query(db.func.coalesce(db.func.sum(MovimientoCaja.monto), 0)).filter(
+        MovimientoCaja.fecha == fecha, MovimientoCaja.tipo == "salida").scalar() or 0.0
+    gasto = db.session.query(db.func.coalesce(db.func.sum(MovimientoCaja.monto), 0)).filter(
+        MovimientoCaja.fecha == fecha, MovimientoCaja.tipo == "gasto").scalar() or 0.0
+    return float(entrada or 0.0), float(salida or 0.0), float(gasto or 0.0)
+
+
 def crear_liquidacion_para_fecha(fecha: date):
-    """Crea una liquidación para `fecha` si no existe. Paquete = suma saldos actuales; caja hereda la anterior."""
+    """
+    Crea una Liquidacion para `fecha` si no existe.
+    - total_abonos = suma abonos de la fecha
+    - total_prestamos = suma prestamos de la fecha
+    - paquete = suma saldos actuales (foto del momento)
+    - caja se hereda del último registro anterior + abonos - prestamos + movimientos de caja
+    """
+    fecha = fecha if isinstance(fecha, date) else fecha.date()
     liq = Liquidacion.query.filter_by(fecha=fecha).first()
     if liq:
         return liq
 
     tot_abonos = db.session.query(db.func.coalesce(db.func.sum(Abono.monto), 0)).filter(Abono.fecha == fecha).scalar() or 0.0
     tot_prestamos = db.session.query(db.func.coalesce(db.func.sum(Prestamo.monto), 0)).filter(Prestamo.fecha == fecha).scalar() or 0.0
-    paquete_actual = db.session.query(db.func.coalesce(db.func.sum(Cliente.saldo), 0)).scalar() or 0.0
+    paquete_actual = paquete_total_actual()
 
     ultima = Liquidacion.query.filter(Liquidacion.fecha < fecha).order_by(Liquidacion.fecha.desc()).first()
-    caja_anterior = ultima.caja if ultima else 0.0
+    caja_anterior = float(ultima.caja) if ultima else 0.0
 
-    # considerar movimientos manuales (entrada/salida/gasto) del día
-    mov_entrada = db.session.query(db.func.coalesce(db.func.sum(MovimientoCaja.monto), 0)).filter(
-        MovimientoCaja.fecha == fecha, MovimientoCaja.tipo == "entrada"
-    ).scalar() or 0.0
-    mov_salida = db.session.query(db.func.coalesce(db.func.sum(MovimientoCaja.monto), 0)).filter(
-        MovimientoCaja.fecha == fecha, MovimientoCaja.tipo == "salida"
-    ).scalar() or 0.0
-    mov_gasto = db.session.query(db.func.coalesce(db.func.sum(MovimientoCaja.monto), 0)).filter(
-        MovimientoCaja.fecha == fecha, MovimientoCaja.tipo == "gasto"
-    ).scalar() or 0.0
+    mov_entrada, mov_salida, mov_gasto = movimientos_caja_totales(fecha)
 
-    caja = caja_anterior + tot_abonos - tot_prestamos + mov_entrada - mov_salida - mov_gasto
+    caja = caja_anterior + float(tot_abonos or 0.0) - float(tot_prestamos or 0.0) + mov_entrada - mov_salida - mov_gasto
 
     liq = Liquidacion(
         fecha=fecha,
-        total_abonos=tot_abonos,
-        total_prestamos=tot_prestamos,
-        caja=caja,
-        paquete=paquete_actual
+        total_abonos=float(tot_abonos or 0.0),
+        total_prestamos=float(tot_prestamos or 0.0),
+        caja=float(caja or 0.0),
+        paquete=float(paquete_actual or 0.0)
     )
     db.session.add(liq)
     db.session.commit()
     return liq
 
 
+def asegurar_liquidaciones_contiguas():
+    """Asegura que haya Liquidacion registrada para cada día desde la última existente hasta hoy (inclusive)."""
+    hoy = date.today()
+    ultima = Liquidacion.query.order_by(Liquidacion.fecha.desc()).first()
+    if not ultima:
+        # crear solo hoy si no hay nada
+        crear_liquidacion_para_fecha(hoy)
+        return
+
+    # si hay huecos, crear cada fecha intermedia
+    dia = ultima.fecha + timedelta(days=1)
+    while dia <= hoy:
+        crear_liquidacion_para_fecha(dia)
+        dia += timedelta(days=1)
+
+
 def actualizar_liquidacion_por_movimiento(fecha: date):
-    """Recalcula y actualiza la liquidación del día `fecha`."""
+    """Recalcula la liquidación del día `fecha`."""
+    fecha = fecha if isinstance(fecha, date) else fecha.date()
     liq = Liquidacion.query.filter_by(fecha=fecha).first()
     if not liq:
         liq = crear_liquidacion_para_fecha(fecha)
 
-    tot_abonos = db.session.query(db.func.coalesce(db.func.sum(Abono.monto), 0)).filter(Abono.fecha == fecha).scalar() or 0.0
-    tot_prestamos = db.session.query(db.func.coalesce(db.func.sum(Prestamo.monto), 0)).filter(Prestamo.fecha == fecha).scalar() or 0.0
-    paquete_actual = db.session.query(db.func.coalesce(db.func.sum(Cliente.saldo), 0)).scalar() or 0.0
+    tot_abonos = float(db.session.query(db.func.coalesce(db.func.sum(Abono.monto), 0)).filter(Abono.fecha == fecha).scalar() or 0.0)
+    tot_prestamos = float(db.session.query(db.func.coalesce(db.func.sum(Prestamo.monto), 0)).filter(Prestamo.fecha == fecha).scalar() or 0.0)
+    paquete_actual = paquete_total_actual()
 
     anterior = Liquidacion.query.filter(Liquidacion.fecha < fecha).order_by(Liquidacion.fecha.desc()).first()
-    caja_anterior = anterior.caja if anterior else 0.0
+    caja_anterior = float(anterior.caja) if anterior else 0.0
 
-    mov_entrada = db.session.query(db.func.coalesce(db.func.sum(MovimientoCaja.monto), 0)).filter(
-        MovimientoCaja.fecha == fecha, MovimientoCaja.tipo == "entrada"
-    ).scalar() or 0.0
-    mov_salida = db.session.query(db.func.coalesce(db.func.sum(MovimientoCaja.monto), 0)).filter(
-        MovimientoCaja.fecha == fecha, MovimientoCaja.tipo == "salida"
-    ).scalar() or 0.0
-    mov_gasto = db.session.query(db.func.coalesce(db.func.sum(MovimientoCaja.monto), 0)).filter(
-        MovimientoCaja.fecha == fecha, MovimientoCaja.tipo == "gasto"
-    ).scalar() or 0.0
-
+    mov_entrada, mov_salida, mov_gasto = movimientos_caja_totales(fecha)
     caja = caja_anterior + tot_abonos - tot_prestamos + mov_entrada - mov_salida - mov_gasto
 
     liq.total_abonos = tot_abonos
@@ -187,21 +187,18 @@ def actualizar_liquidacion_por_movimiento(fecha: date):
 
 
 def cliente_estado_class(cliente: Cliente):
-    """Devuelve clase bootstrap para la fila según saldo / vencimiento / abonos del día."""
+    """Devuelve clase bootstrap según plazo/fecha de creación + plazo y abono hoy."""
     try:
         venc = cliente.fecha_creacion + timedelta(days=cliente.plazo)
         hoy = date.today()
-
-        # si todo pagado
         if cliente.saldo <= 0:
             return "table-success"
-        # si abonó hoy
         if cliente.ultimo_abono_fecha == hoy:
+            # Abonó hoy: marcamos info (azul claro) — el requerimiento pedía verde dentro de la fila del input,
+            # aquí devolvemos clase para toda la fila si lo prefieres.
             return "table-info"
-        # vencido > 30 días
         if hoy > venc + timedelta(days=30):
             return "table-danger"
-        # vencido dentro de 30 días
         if hoy > venc:
             return "table-warning"
         return ""
@@ -209,17 +206,71 @@ def cliente_estado_class(cliente: Cliente):
         return ""
 
 
-# -----------------------
-# RUTAS PRINCIPALES
-# -----------------------
+# ---------------------------
+# RUTAS: AUTH
+# ---------------------------
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        usuario = request.form.get("usuario", "").strip()
+        clave = request.form.get("clave", "").strip()
+        if usuario == VALID_USER and clave == VALID_PASS:
+            session["usuario"] = usuario
+            flash("Inicio de sesión correcto", "success")
+            return redirect(url_for("index"))
+        flash("Usuario o clave incorrectos", "danger")
+    return render_template("login.html")
+
+
+@app.route("/logout")
+def logout():
+    session.pop("usuario", None)
+    flash("Sesión cerrada", "info")
+    return redirect(url_for("login"))
+
+
+# ---------------------------
+# RUTAS PRINCIPALES (INDEX / INICIO / DASHBOARD)
+# ---------------------------
 @app.route("/")
+def raiz():
+    # si no autenticado lo mandamos al login, si sí, al index
+    if "usuario" not in session:
+        return redirect(url_for("login"))
+    return redirect(url_for("index"))
+
+
+@app.route("/index")
 @login_required
 def index():
-    crear_liquidacion_para_fecha(date.today())
+    # asegurar liquidaciones hasta hoy
+    asegurar_liquidaciones_contiguas()
+    # asegurar liquidacion de hoy (y devolverla para templates que esperan liq_hoy)
+    liq_hoy = crear_liquidacion_para_fecha(date.today())
     clientes = Cliente.query.order_by(Cliente.orden).all()
-    return render_template("index.html", clientes=clientes, hoy=date.today(), estado_class=cliente_estado_class)
+    return render_template("index.html", clientes=clientes, hoy=date.today(), estado_class=cliente_estado_class, liq_hoy=liq_hoy)
 
 
+@app.route("/inicio")
+@login_required
+def inicio():
+    # alias
+    return redirect(url_for("index"))
+
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    total_clientes = Cliente.query.count()
+    total_abonos = float(db.session.query(db.func.coalesce(db.func.sum(Abono.monto), 0)).scalar() or 0.0)
+    total_prestamos = float(db.session.query(db.func.coalesce(db.func.sum(Prestamo.monto), 0)).scalar() or 0.0)
+    paquete = paquete_total_actual()
+    return render_template("dashboard.html", total_clientes=total_clientes, total_abonos=total_abonos, total_prestamos=total_prestamos, paquete=paquete)
+
+
+# ---------------------------
+# CLIENTES: CREAR / EDITAR / ELIMINAR
+# ---------------------------
 @app.route("/nuevo_cliente", methods=["GET", "POST"])
 @login_required
 def nuevo_cliente():
@@ -231,7 +282,7 @@ def nuevo_cliente():
             plazo = int(request.form.get("plazo", 30))
             interes = float(request.form.get("interes", 0))
         except ValueError:
-            flash("Monto/plazo/interés inválidos", "warning")
+            flash("Monto, plazo o interés inválidos", "warning")
             return redirect(url_for("nuevo_cliente"))
 
         codigo = generar_codigo_numerico()
@@ -251,9 +302,9 @@ def nuevo_cliente():
             fecha_creacion=date.today()
         )
         db.session.add(cliente)
-        db.session.flush()
+        db.session.flush()  # obtener id
 
-        # registrar préstamo
+        # registrar préstamo de hoy
         prestamo = Prestamo(cliente_id=cliente.id, monto=monto, fecha=date.today())
         db.session.add(prestamo)
         db.session.commit()
@@ -270,18 +321,42 @@ def nuevo_cliente():
 def editar_cliente(cliente_id):
     cliente = Cliente.query.get_or_404(cliente_id)
     if request.method == "POST":
-        cliente.orden = int(request.form.get("orden", cliente.orden))
+        try:
+            cliente.orden = int(request.form.get("orden", cliente.orden))
+        except ValueError:
+            flash("Orden inválido", "warning")
+            return redirect(url_for("editar_cliente", cliente_id=cliente_id))
+
         cliente.nombre = request.form.get("nombre", cliente.nombre)
         cliente.direccion = request.form.get("direccion", cliente.direccion)
-        cliente.monto = float(request.form.get("monto", cliente.monto))
-        cliente.plazo = int(request.form.get("plazo", cliente.plazo))
-        cliente.interes = float(request.form.get("interes", cliente.interes))
+        try:
+            cliente.monto = float(request.form.get("monto", cliente.monto))
+            cliente.plazo = int(request.form.get("plazo", cliente.plazo))
+            cliente.interes = float(request.form.get("interes", cliente.interes))
+        except ValueError:
+            flash("Monto/plazo/interés inválidos", "warning")
+            return redirect(url_for("editar_cliente", cliente_id=cliente_id))
+
         db.session.commit()
         flash("Cliente actualizado", "success")
         return redirect(url_for("index"))
     return render_template("editar_cliente.html", cliente=cliente)
 
 
+@app.route("/eliminar_cliente/<int:cliente_id>", methods=["POST"])
+@login_required
+def eliminar_cliente(cliente_id):
+    cliente = Cliente.query.get_or_404(cliente_id)
+    db.session.delete(cliente)
+    db.session.commit()
+    actualizar_liquidacion_por_movimiento(date.today())
+    flash("Cliente eliminado", "success")
+    return redirect(url_for("index"))
+
+
+# ---------------------------
+# ABONOS
+# ---------------------------
 @app.route("/abonar/<int:cliente_id>", methods=["POST"])
 @login_required
 def abonar(cliente_id):
@@ -305,6 +380,7 @@ def abonar(cliente_id):
     ab = Abono(cliente_id=cliente.id, monto=monto_abono, fecha=date.today())
     db.session.add(ab)
 
+    # registrar en caja como entrada
     mov = MovimientoCaja(tipo="entrada", monto=monto_abono, descripcion=f"Abono {cliente.nombre}", fecha=date.today())
     db.session.add(mov)
 
@@ -314,6 +390,29 @@ def abonar(cliente_id):
     return redirect(url_for("index"))
 
 
+@app.route("/eliminar_abono/<int:abono_id>", methods=["POST"])
+@login_required
+def eliminar_abono(abono_id):
+    abono = Abono.query.get_or_404(abono_id)
+    cliente = abono.cliente
+    if cliente:
+        cliente.saldo += abono.monto
+        # limpiar ultimo_abono_fecha si no quedan abonos ese día para ese cliente
+        if cliente.ultimo_abono_fecha == abono.fecha:
+            otros = Abono.query.filter(Abono.cliente_id == cliente.id, Abono.fecha == abono.fecha, Abono.id != abono.id).count()
+            if otros == 0:
+                cliente.ultimo_abono_fecha = None
+    fecha = abono.fecha
+    db.session.delete(abono)
+    db.session.commit()
+    actualizar_liquidacion_por_movimiento(fecha)
+    flash("Abono eliminado y saldo repuesto", "success")
+    return redirect(url_for("liquidacion"))
+
+
+# ---------------------------
+# REORDENAR (ACTUALIZAR ORDEN) - comportamiento: insertar en nuevo lugar, reasignar 1..n
+# ---------------------------
 @app.route("/actualizar_orden/<int:cliente_id>", methods=["POST"])
 @login_required
 def actualizar_orden(cliente_id):
@@ -329,13 +428,13 @@ def actualizar_orden(cliente_id):
         return redirect(url_for("index"))
 
     clientes = Cliente.query.order_by(Cliente.orden).all()
-    if cliente not in clientes:
-        flash("Error al reorganizar", "danger")
-        return redirect(url_for("index"))
+    # remove cliente si está en la lista y luego insertarlo en posición indicada
+    if cliente in clientes:
+        clientes.remove(cliente)
 
-    clientes.remove(cliente)
     insert_index = min(nuevo_orden - 1, len(clientes))
     clientes.insert(insert_index, cliente)
+
     for idx, c in enumerate(clientes, start=1):
         c.orden = idx
 
@@ -344,24 +443,15 @@ def actualizar_orden(cliente_id):
     return redirect(url_for("index"))
 
 
-@app.route("/eliminar_cliente/<int:cliente_id>", methods=["POST"])
-@login_required
-def eliminar_cliente(cliente_id):
-    cliente = Cliente.query.get_or_404(cliente_id)
-    db.session.delete(cliente)
-    db.session.commit()
-    actualizar_liquidacion_por_movimiento(date.today())
-    flash("Cliente eliminado", "success")
-    return redirect(url_for("index"))
-
-
-# -----------------------
+# ---------------------------
 # LIQUIDACIÓN / BUSCAR / RESUMEN
-# -----------------------
+# ---------------------------
 @app.route("/liquidacion")
 @login_required
 def liquidacion():
-    crear_liquidacion_para_fecha(date.today())
+    asegurar_liquidaciones_contiguas()
+    # aseguramos liq hoy
+    liq_hoy = crear_liquidacion_para_fecha(date.today())
 
     fecha_inicio = request.args.get("fecha_inicio")
     fecha_fin = request.args.get("fecha_fin")
@@ -389,15 +479,39 @@ def liquidacion():
             "caja": caja_final,
             "paquete": paquete_final
         }
-        return render_template("liquidacion.html", liquidaciones=liquidaciones, resumen_rango=resumen_rango, hoy=date.today())
+        return render_template("liquidacion.html", liquidaciones=liquidaciones, resumen_rango=resumen_rango, hoy=date.today(), liq_hoy=liq_hoy)
     else:
         ultimas = Liquidacion.query.order_by(Liquidacion.fecha.desc()).limit(10).all()
-        return render_template("liquidacion.html", liquidaciones=ultimas, resumen_rango=None, hoy=date.today())
+        return render_template("liquidacion.html", liquidaciones=ultimas, resumen_rango=None, hoy=date.today(), liq_hoy=liq_hoy)
 
 
-# -----------------------
-# API / Detalle
-# -----------------------
+# ---------------------------
+# DETALLES (para páginas y API)
+# ---------------------------
+@app.route("/detalle_abonos/<fecha>")
+@login_required
+def detalle_abonos(fecha):
+    try:
+        f = datetime.strptime(fecha, "%Y-%m-%d").date()
+    except ValueError:
+        flash("Fecha inválida", "warning")
+        return redirect(url_for("liquidacion"))
+    abonos = Abono.query.filter_by(fecha=f).all()
+    return render_template("detalle_abonos.html", abonos=abonos, fecha=f)
+
+
+@app.route("/detalle_prestamos/<fecha>")
+@login_required
+def detalle_prestamos(fecha):
+    try:
+        f = datetime.strptime(fecha, "%Y-%m-%d").date()
+    except ValueError:
+        flash("Fecha inválida", "warning")
+        return redirect(url_for("liquidacion"))
+    prestamos = Prestamo.query.filter_by(fecha=f).all()
+    return render_template("detalle_prestamos.html", prestamos=prestamos, fecha=f)
+
+
 @app.route("/api/detalle/abonos/<fecha>")
 @login_required
 def api_detalle_abonos(fecha):
@@ -406,7 +520,7 @@ def api_detalle_abonos(fecha):
     except ValueError:
         return jsonify([])
     abonos = Abono.query.filter_by(fecha=f).all()
-    data = [{"cliente": a.cliente.nombre, "monto": a.monto, "fecha": a.fecha.isoformat()} for a in abonos]
+    data = [{"cliente": a.cliente.nombre, "monto": a.monto, "fecha": a.fecha.isoformat(), "abono_id": a.id} for a in abonos]
     return jsonify(data)
 
 
@@ -418,13 +532,13 @@ def api_detalle_prestamos(fecha):
     except ValueError:
         return jsonify([])
     prestamos = Prestamo.query.filter_by(fecha=f).all()
-    data = [{"cliente": p.cliente.nombre, "monto": p.monto, "fecha": p.fecha.isoformat()} for p in prestamos]
+    data = [{"cliente": p.cliente.nombre, "monto": p.monto, "fecha": p.fecha.isoformat(), "prestamo_id": p.id} for p in prestamos]
     return jsonify(data)
 
 
-# -----------------------
+# ---------------------------
 # MOVIMIENTOS DE CAJA (entrada/salida/gasto)
-# -----------------------
+# ---------------------------
 @app.route("/caja/entrada", methods=["POST"])
 @login_required
 def caja_entrada():
@@ -476,7 +590,7 @@ def caja_gasto():
     if monto <= 0:
         flash("Monto debe ser mayor a 0", "warning")
         return redirect(url_for("liquidacion"))
-    descripcion = request.form.get("descripcion", "Gasto manual")
+    descripcion = request.form.get("descripcion", "Gasto")
     mov = MovimientoCaja(tipo="gasto", monto=monto, descripcion=descripcion, fecha=date.today())
     db.session.add(mov)
     db.session.commit()
@@ -485,11 +599,19 @@ def caja_gasto():
     return redirect(url_for("liquidacion"))
 
 
-# -----------------------
-# MAIN
-# -----------------------
-if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-    app.run(debug=True)
+# ---------------------------
+# HANDLERS / INICIALIZACIÓN DB
+# ---------------------------
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template("404.html"), 404
 
+
+# Crear tablas si faltan
+with app.app_context():
+    db.create_all()
+
+
+if __name__ == "__main__":
+    # modo debug local
+    app.run(debug=True)

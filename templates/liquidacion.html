@@ -1,120 +1,91 @@
 {% extends "base.html" %}
+
 {% block content %}
+<div class="container mt-4">
+    <h2>📊 Liquidación</h2>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h2>Liquidación - {{ hoy }}</h2>
-    <div>
-        <!-- Botón Entrada -->
-        <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#entradaModal">Entrada</button>
-        <!-- Botón Salida -->
-        <button class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#salidaModal">Salida</button>
-        <!-- Botón Gasto -->
-        <button class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#gastoModal">Gasto</button>
+    <!-- Botones de Caja -->
+    <div class="d-flex justify-content-end mb-3">
+        <!-- Entrada -->
+        <form action="{{ url_for('caja_entrada') }}" method="POST" class="me-2 d-flex">
+            <input type="number" name="monto" step="0.01" placeholder="Monto" class="form-control form-control-sm me-1" required>
+            <input type="text" name="descripcion" placeholder="Descripción" class="form-control form-control-sm me-1">
+            <button type="submit" class="btn btn-success btn-sm">💰 Entrada</button>
+        </form>
+
+        <!-- Salida -->
+        <form action="{{ url_for('caja_salida') }}" method="POST" class="me-2 d-flex">
+            <input type="number" name="monto" step="0.01" placeholder="Monto" class="form-control form-control-sm me-1" required>
+            <input type="text" name="descripcion" placeholder="Descripción" class="form-control form-control-sm me-1">
+            <button type="submit" class="btn btn-warning btn-sm">💸 Salida</button>
+        </form>
+
+        <!-- Gasto -->
+        <form action="{{ url_for('caja_gasto') }}" method="POST" class="d-flex">
+            <input type="number" name="monto" step="0.01" placeholder="Monto" class="form-control form-control-sm me-1" required>
+            <input type="text" name="descripcion" placeholder="Descripción" class="form-control form-control-sm me-1">
+            <button type="submit" class="btn btn-danger btn-sm">🧾 Gasto</button>
+        </form>
     </div>
-</div>
 
-<h5>Caja actual: {{ caja_total }}</h5>
-
-<table class="table table-bordered table-sm align-middle text-center">
-    <thead class="table-dark">
-        <tr>
-            <th>X</th>
-            <th>Código</th>
-            <th>Orden</th>
-            <th>Nombre</th>
-            <th>Abonos</th>
-            <th>Saldo</th>
-        </tr>
-    </thead>
-    <tbody>
-    {% for cliente in clientes %}
-        <tr>
-            <!-- Botón X eliminar -->
-            <td>
-                <form method="POST" action="{{ url_for('eliminar_cliente', cliente_id=cliente.id) }}" onsubmit="return confirm('¿Seguro que deseas eliminar este cliente?');">
-                    <button type="submit" class="btn btn-sm btn-outline-danger">X</button>
-                </form>
-            </td>
-            <td>{{ cliente.codigo }}</td>
-            <td>{{ cliente.orden }}</td>
-            <td>{{ cliente.nombre }}</td>
-            <td>
-                <form method="POST" action="{{ url_for('abonar', cliente_id=cliente.id) }}">
-                    <input type="number" step="0.01" name="monto" class="form-control form-control-sm abono-input" required>
-                </form>
-            </td>
-            <td>{{ cliente.saldo }}</td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
-
-<!-- MODALES -->
-<!-- Entrada -->
-<div class="modal fade" id="entradaModal" tabindex="-1">
-  <div class="modal-dialog">
-    <form method="POST" action="{{ url_for('caja_entrada') }}" class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Entrada de efectivo</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <input type="number" step="0.01" name="monto" class="form-control" placeholder="Monto" required>
-      </div>
-      <div class="modal-footer">
-        <button type="submit" class="btn btn-success">Registrar</button>
-      </div>
+    <!-- Buscador de rango de fechas -->
+    <form method="GET" class="row g-3 mb-3">
+        <div class="col-md-4">
+            <input type="date" name="fecha_inicio" class="form-control" value="{{ request.args.get('fecha_inicio', '') }}">
+        </div>
+        <div class="col-md-4">
+            <input type="date" name="fecha_fin" class="form-control" value="{{ request.args.get('fecha_fin', '') }}">
+        </div>
+        <div class="col-md-4">
+            <button type="submit" class="btn btn-primary">🔍 Buscar</button>
+        </div>
     </form>
-  </div>
+
+    <!-- Resumen si hay rango -->
+    {% if resumen_rango %}
+    <div class="alert alert-info">
+        <strong>Resumen del {{ resumen_rango.desde }} al {{ resumen_rango.hasta }}</strong><br>
+        Total abonos: {{ "%.2f"|format(resumen_rango.total_abonos) }} |
+        Total préstamos: {{ "%.2f"|format(resumen_rango.total_prestamos) }} |
+        Caja final: {{ "%.2f"|format(resumen_rango.caja) }} |
+        Paquete final: {{ "%.2f"|format(resumen_rango.paquete) }}
+    </div>
+    {% endif %}
+
+    <!-- Tabla de liquidaciones -->
+    <table class="table table-bordered table-hover">
+        <thead class="table-dark">
+            <tr>
+                <th>Fecha</th>
+                <th>Abonos</th>
+                <th>Préstamos</th>
+                <th>Caja</th>
+                <th>Paquete</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for liq in liquidaciones %}
+            <tr>
+                <td>{{ liq.fecha.strftime("%d/%m/%Y") }}</td>
+                <td>
+                    <a href="{{ url_for('detalle_abonos', fecha=liq.fecha.isoformat()) }}">
+                        {{ "%.2f"|format(liq.total_abonos) }}
+                    </a>
+                </td>
+                <td>
+                    <a href="{{ url_for('detalle_prestamos', fecha=liq.fecha.isoformat()) }}">
+                        {{ "%.2f"|format(liq.total_prestamos) }}
+                    </a>
+                </td>
+                <td>{{ "%.2f"|format(liq.caja) }}</td>
+                <td>{{ "%.2f"|format(liq.paquete) }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" class="text-center">No hay registros</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 </div>
-
-<!-- Salida -->
-<div class="modal fade" id="salidaModal" tabindex="-1">
-  <div class="modal-dialog">
-    <form method="POST" action="{{ url_for('caja_salida') }}" class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Salida de efectivo</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <input type="number" step="0.01" name="monto" class="form-control" placeholder="Monto" required>
-      </div>
-      <div class="modal-footer">
-        <button type="submit" class="btn btn-danger">Registrar</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- Gasto -->
-<div class="modal fade" id="gastoModal" tabindex="-1">
-  <div class="modal-dialog">
-    <form method="POST" action="{{ url_for('caja_gasto') }}" class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Registrar gasto</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <input type="number" step="0.01" name="monto" class="form-control mb-2" placeholder="Monto" required>
-        <input type="text" name="descripcion" class="form-control" placeholder="Descripción del gasto">
-      </div>
-      <div class="modal-footer">
-        <button type="submit" class="btn btn-warning">Registrar</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<script>
-document.querySelectorAll(".abono-input").forEach(input => {
-    input.addEventListener("keypress", function(e) {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            this.closest("form").submit();
-            this.style.backgroundColor = "#90EE90"; // verde claro
-        }
-    });
-});
-</script>
-
 {% endblock %}
