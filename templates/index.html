@@ -33,7 +33,7 @@
             <td style="width:110px;">
               <form action="{{ url_for('actualizar_orden', cliente_id=c.id) }}" method="post" class="d-flex">
                 <input type="number" name="orden" value="{{ c.orden }}" 
-                       class="form-control" 
+                       class="form-control no-arrows" 
                        style="font-size:1.2rem; padding:8px; text-align:center;" />
                 <button type="submit" 
                         class="btn btn-outline-primary ms-1" 
@@ -57,7 +57,7 @@
             <td style="width:140px;">
               <form action="{{ url_for('abonar', cliente_id=c.id) }}" method="post" class="d-flex">
                 <input type="number" step="0.01" name="monto_abono" value="0"
-                       class="form-control" 
+                       class="form-control no-arrows abono-input" 
                        style="font-size:1.2rem; padding:8px; text-align:right;" />
                 <button type="submit" 
                         class="btn btn-success ms-1" 
@@ -85,4 +85,29 @@
   {% else %}
     <div class="alert alert-info">No hay clientes registrados todavía.</div>
   {% endif %}
+
+  <!-- Script para poner la celda de abono en verde -->
+  <script>
+    document.querySelectorAll('.abono-input').forEach(function(input) {
+      input.addEventListener('input', function() {
+        if (parseFloat(this.value) > 0) {
+          this.style.backgroundColor = '#d4edda'; // verde suave
+        } else {
+          this.style.backgroundColor = '';
+        }
+      });
+    });
+  </script>
+
+  <!-- CSS para quitar flechitas de los inputs number -->
+  <style>
+    input.no-arrows::-webkit-outer-spin-button,
+    input.no-arrows::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input.no-arrows[type=number] {
+      -moz-appearance: textfield;
+    }
+  </style>
 {% endblock %}
