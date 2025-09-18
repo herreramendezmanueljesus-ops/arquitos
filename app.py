@@ -28,27 +28,13 @@ if uri.startswith("postgres://"):
     uri = uri.replace("postgres://", "postgresql://", 1)
 
 app.config["SQLALCHEMY_DATABASE_URI"] = uri
->>>>>>> 50fb7d3 (Actualizar requirements y arreglar psycopg2)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
 # Credenciales (simples)
-<<<<<<< HEAD
-VALID_USER = "j-mejia"
-VALID_PASS = "honny"
-
-# Credenciales (simples)  HEAD
 VALID_USER = "mjesus40"
 VALID_PASS = "198409"
-=======
-VALID_USER = "j-mejia"
-VALID_PASS = "honny"
->>>>>>> e07312b (Actualización: nueva cadena de conexión a PostgreSQL y ajustes en app.py)
-=======
-VALID_USER = "J-Mejia"
-VALID_PASS = "honny"
->>>>>>> 50fb7d3 (Actualizar requirements y arreglar psycopg2)
 
 # ---------------------------
 # MODELOS
