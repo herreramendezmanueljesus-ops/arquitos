@@ -12,16 +12,10 @@ from functools import wraps
 # ---------------------------
 app = Flask(__name__)
 app.secret_key = os.environ.get("APP_SECRET", "clave_secreta_local_cámbiala")
-<<<<<<< HEAD
-# Si prefieres definir DATABASE_URL en el entorno, se usará; en caso contrario, se usa DB_DEFAULT.
-DB_DEFAULT = "postgresql://jesus:0hYfIOyEEaiCax8ne3Wd7KspFgGJBdKy@dpg-d353siqli9vc739fqef0-a.oregon-postgres.render.com/jesus_zdd3"
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", DB_DEFAULT)
-=======
 
 # URL de la base de datos
 DB_DEFAULT = "postgresql+psycopg2://mjesus40:iNZChYKoUcODzbvtCA0VKkj08luyaj5q@dpg-d3538fb3fgac73b4anpg-a.oregon-postgres.render.com/mjesus40"
 uri = os.getenv("DATABASE_URL", DB_DEFAULT)
-
 
 # Ajuste necesario para Render: cambiar postgres:// a postgresql:// si es necesario
 if uri.startswith("postgres://"):
@@ -37,8 +31,7 @@ VALID_USER = "mjesus40"
 VALID_PASS = "198409"
 
 # ---------------------------
-# MODELOS
-# ---------------------------
+# MODELOS# ---------------------------
 class Cliente(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     codigo = db.Column(db.String(20), unique=True, nullable=False)
