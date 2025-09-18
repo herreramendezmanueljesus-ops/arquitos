@@ -12,13 +12,29 @@ from functools import wraps
 # ---------------------------
 app = Flask(__name__)
 app.secret_key = os.environ.get("APP_SECRET", "clave_secreta_local_cámbiala")
+<<<<<<< HEAD
 # Si prefieres definir DATABASE_URL en el entorno, se usará; en caso contrario, se usa DB_DEFAULT.
 DB_DEFAULT = "postgresql://jesus:0hYfIOyEEaiCax8ne3Wd7KspFgGJBdKy@dpg-d353siqli9vc739fqef0-a.oregon-postgres.render.com/jesus_zdd3"
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", DB_DEFAULT)
+=======
+
+# URL de la base de datos
+DB_DEFAULT = "postgresql+psycopg2://mjesus40:iNZChYKoUcODzbvtCA0VKkj08luyaj5q@dpg-d3538fb3fgac73b4anpg-a.oregon-postgres.render.com/mjesus40"
+uri = os.getenv("DATABASE_URL", DB_DEFAULT)
+
+
+# Ajuste necesario para Render: cambiar postgres:// a postgresql:// si es necesario
+if uri.startswith("postgres://"):
+    uri = uri.replace("postgres://", "postgresql://", 1)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = uri
+>>>>>>> 50fb7d3 (Actualizar requirements y arreglar psycopg2)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
 db = SQLAlchemy(app)
 
 # Credenciales (simples)
+<<<<<<< HEAD
 VALID_USER = "j-mejia"
 VALID_PASS = "honny"
 
@@ -29,6 +45,10 @@ VALID_PASS = "198409"
 VALID_USER = "j-mejia"
 VALID_PASS = "honny"
 >>>>>>> e07312b (Actualización: nueva cadena de conexión a PostgreSQL y ajustes en app.py)
+=======
+VALID_USER = "J-Mejia"
+VALID_PASS = "honny"
+>>>>>>> 50fb7d3 (Actualizar requirements y arreglar psycopg2)
 
 # ---------------------------
 # MODELOS
@@ -117,33 +137,47 @@ def movimientos_caja_totales_para_dia(fecha: date):
         MovimientoCaja.fecha >= start, MovimientoCaja.fecha < end, MovimientoCaja.tipo == "gasto").scalar() or 0.0
     return float(entrada), float(salida), float(gasto)
 
-def crear_liquidacion_para_fecha(fecha: date):
-    fecha = fecha if isinstance(fecha, date) else fecha.date()
+def crear_liquidacion_para_fecha(fecha):
+    """Crea o devuelve la liquidación de una fecha específica."""
+    # Verificar si ya existe la liquidación
     liq = Liquidacion.query.filter_by(fecha=fecha).first()
     if liq:
-        return liq
+        return liq  # ✅ Si ya existe, la devolvemos
 
-    start, end = day_range(fecha)
-    tot_abonos = db.session.query(db.func.coalesce(db.func.sum(Abono.monto), 0)).filter(Abono.fecha >= start, Abono.fecha < end).scalar() or 0.0
-    tot_prestamos = db.session.query(db.func.coalesce(db.func.sum(Prestamo.monto), 0)).filter(Prestamo.fecha >= start, Prestamo.fecha < end).scalar() or 0.0
-    paquete_actual = paquete_total_actual()
-
-    ultima = Liquidacion.query.filter(Liquidacion.fecha < fecha).order_by(Liquidacion.fecha.desc()).first()
-    caja_anterior = float(ultima.caja) if ultima else 0.0
-
-    mov_entrada, mov_salida, mov_gasto = movimientos_caja_totales_para_dia(fecha)
-
-    # Caja se calcula únicamente con movimientos (evitamos duplicar sumas si también guardamos abonos como movimientos)
-    caja = caja_anterior + mov_entrada - mov_salida - mov_gasto
-
+    # Si no existe, la creamos
     liq = Liquidacion(
         fecha=fecha,
-        total_abonos=float(tot_abonos or 0.0),
-        total_prestamos=float(tot_prestamos or 0.0),
-        caja=float(caja or 0.0),
-        paquete=float(paquete_actual or 0.0)
+        total_abonos=0.0,
+        total_prestamos=0.0,
+        caja=0.0,
+        paquete=0.0
     )
     db.session.add(liq)
+    db.session.commit()
+    return liq
+
+def actualizar_liquidacion_por_movimiento(fecha):
+    """Recalcula los totales de la liquidación para la fecha dada."""
+    liq = crear_liquidacion_para_fecha(fecha)  # ✅ Siempre existe
+
+    # Recalcular con los movimientos reales
+    total_abonos = db.session.query(func.sum(Abono.monto)).filter_by(fecha=fecha).scalar() or 0.0
+    total_prestamos = db.session.query(func.sum(Prestamo.monto)).filter_by(fecha=fecha).scalar() or 0.0
+
+    # Caja = abonos - préstamos + entradas - salidas - gastos
+    entradas = db.session.query(func.sum(CajaEntrada.monto)).filter_by(fecha=fecha).scalar() or 0.0
+    salidas = db.session.query(func.sum(CajaSalida.monto)).filter_by(fecha=fecha).scalar() or 0.0
+    gastos = db.session.query(func.sum(CajaGasto.monto)).filter_by(fecha=fecha).scalar() or 0.0
+
+    caja = entradas - salidas - gastos
+    paquete = total_abonos - total_prestamos
+
+    # Actualizar valores
+    liq.total_abonos = total_abonos
+    liq.total_prestamos = total_prestamos
+    liq.caja = caja
+    liq.paquete = paquete
+
     db.session.commit()
     return liq
 
@@ -394,7 +428,7 @@ def eliminar_abono(abono_id):
             if otros == 0:
                 cliente.ultimo_abono_fecha = None
 
-    # eliminar movimiento asociado (si existe)
+        # eliminar movimiento asociado (si existe)
     if abono.movimiento_id:
         mov = MovimientoCaja.query.get(abono.movimiento_id)
         if mov:
@@ -404,29 +438,18 @@ def eliminar_abono(abono_id):
     db.session.commit()
     actualizar_liquidacion_por_movimiento(fecha_dt)
     flash("Abono eliminado, saldo repuesto y caja ajustada", "success")
+    flash("Abono eliminado, saldo repuesto y caja ajustada", "success")
     return redirect(url_for("liquidacion"))
 
 # ---------------------------
 # PRÉSTAMOS
 # ---------------------------
-@app.route("/detalle_prestamos/<fecha>")
-@login_required
-def detalle_prestamos(fecha):
-    try:
-        f = datetime.strptime(fecha, "%Y-%m-%d").date()
-    except ValueError:
-        flash("Fecha inválida", "warning")
-        return redirect(url_for("liquidacion"))
-    start, end = day_range(f)
-    prestamos = Prestamo.query.filter(Prestamo.fecha >= start, Prestamo.fecha < end).all()
-    return render_template("detalle_prestamos.html", prestamos=prestamos, fecha=f)
-
 @app.route("/eliminar_prestamo/<int:prestamo_id>", methods=["POST"])
 @login_required
 def eliminar_prestamo(prestamo_id):
     prestamo = Prestamo.query.get_or_404(prestamo_id)
     cliente = prestamo.cliente
-    fecha_dt = prestamo.fecha.date() if isinstance(prestamo.fecha, datetime) else prestamo.fecha
+    fecha_dt = prestamo.fecha  # ✅ aquí guardas fecha + hora completas
 
     if cliente:
         cliente.saldo -= prestamo.monto
@@ -442,9 +465,9 @@ def eliminar_prestamo(prestamo_id):
     db.session.delete(prestamo)
     db.session.commit()
     actualizar_liquidacion_por_movimiento(fecha_dt)
+
     flash("Préstamo eliminado correctamente", "success")
     return redirect(url_for("liquidacion"))
-
 # ---------------------------
 # DETALLES ABONOS (con fecha/hora)
 # ---------------------------
@@ -462,31 +485,29 @@ def detalle_abonos(fecha):
     return render_template("detalle_abonos.html", abonos=abonos, fecha=f, tot_entrada=tot_entrada, tot_salida=tot_salida, tot_gasto=tot_gasto)
 
 # ---------------------------
-# API (opcional)
+# DETALLES PRÉSTAMOS (con fecha/hora)
 # ---------------------------
-@app.route("/api/detalle/abonos/<fecha>")
+@app.route("/detalle_prestamos/<fecha>")
 @login_required
-def api_detalle_abonos(fecha):
+def detalle_prestamos(fecha):
     try:
         f = datetime.strptime(fecha, "%Y-%m-%d").date()
     except ValueError:
-        return jsonify([])
-    start, end = day_range(f)
-    abonos = Abono.query.filter(Abono.fecha >= start, Abono.fecha < end).all()
-    data = [{"cliente": a.cliente.nombre, "monto": a.monto, "fecha": a.fecha.isoformat(), "abono_id": a.id} for a in abonos]
-    return jsonify(data)
+        flash("Fecha inválida", "warning")
+        return redirect(url_for("liquidacion"))
 
-@app.route("/api/detalle/prestamos/<fecha>")
-@login_required
-def api_detalle_prestamos(fecha):
-    try:
-        f = datetime.strptime(fecha, "%Y-%m-%d").date()
-    except ValueError:
-        return jsonify([])
     start, end = day_range(f)
     prestamos = Prestamo.query.filter(Prestamo.fecha >= start, Prestamo.fecha < end).all()
-    data = [{"cliente": p.cliente.nombre, "monto": p.monto, "fecha": p.fecha.isoformat(), "prestamo_id": p.id} for p in prestamos]
-    return jsonify(data)
+    tot_entrada, tot_salida, tot_gasto = movimientos_caja_totales_para_dia(f)
+
+    return render_template(
+        "detalle_prestamos.html",
+        prestamos=prestamos,
+        fecha=f,
+        tot_entrada=tot_entrada,
+        tot_salida=tot_salida,
+        tot_gasto=tot_gasto
+    )
 
 # ---------------------------
 # MOVIMIENTOS DE CAJA (manuales)

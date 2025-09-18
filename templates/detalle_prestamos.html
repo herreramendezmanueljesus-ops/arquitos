@@ -9,7 +9,8 @@
       <tr>
         <th>Cliente</th>
         <th>Monto</th>
-        <th>Fecha/Hora</th> <!-- Nueva columna -->
+        ### >>> añadida columna fecha/hora
+        <th>Fecha / Hora</th>
         <th>Acciones</th>
       </tr>
     </thead>
@@ -18,7 +19,8 @@
       <tr>
         <td>{{ prestamo.cliente.nombre }}</td>
         <td>{{ "%.2f"|format(prestamo.monto) }}</td>
-        <td>{{ prestamo.fecha.strftime("%d/%m/%Y %H:%M:%S") }}</td> <!-- fecha/hora -->
+        ### >>> aquí mostramos fecha + hora
+        <td>{{ prestamo.fecha.strftime("%d/%m/%Y %H:%M") }}</td>
         <td>
           <form action="{{ url_for('eliminar_prestamo', prestamo_id=prestamo.id) }}" 
                 method="POST" 
@@ -37,16 +39,5 @@
 
   <a href="{{ url_for('liquidacion') }}" class="btn btn-secondary mt-3">⬅ Volver</a>
 </div>
-
-<!-- CSS para inputs numéricos sin flechitas -->
-<style>
-  input[type=number]::-webkit-inner-spin-button,
-  input[type=number]::-webkit-outer-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-  }
-  input[type=number] {
-    -moz-appearance: textfield;
-  }
-</style>
 {% endblock %}
+

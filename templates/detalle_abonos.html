@@ -1,37 +1,34 @@
 {% extends "base.html" %}
+
 {% block content %}
 <div class="container mt-4">
   <h2>Detalle de Abonos - {{ fecha.strftime("%d/%m/%Y") }}</h2>
-
-  <!-- Totales del día -->
-  <div class="mb-3">
-    <strong>Totales del día:</strong><br>
-    Entrada: {{ tot_entrada }} | Salida: {{ tot_salida }} | Gasto: {{ tot_gasto }}
-  </div>
 
   {% if abonos %}
   <table class="table table-bordered table-hover mt-3">
     <thead class="table-dark">
       <tr>
         <th>Cliente</th>
-        <th>Monto</th>
-        <th>Fecha/Hora</th>
-        <th>Acciones</th>
+        <th class="text-end">Monto</th>
+        <th class="text-center">Fecha y Hora</th>
+        <th class="text-center">Acciones</th>
       </tr>
     </thead>
     <tbody>
       {% for abono in abonos %}
       <tr>
         <td>{{ abono.cliente.nombre }}</td>
-        <!-- Solo esta celda queda en verde -->
-        <td class="abono-realizado">{{ "%.2f"|format(abono.monto) }}</td>
-        <td>{{ abono.fecha.strftime("%d/%m/%Y %H:%M:%S") }}</td>
-        <td>
-          <form action="{{ url_for('eliminar_abono', abono_id=abono.id) }}" 
-                method="POST" 
-                style="display:inline;"
-                onsubmit="return confirm('¿Seguro que deseas eliminar este abono?')">
-            <button type="submit" class="btn btn-danger btn-sm">❌ Eliminar</button>
+        <td class="text-end">{{ "%.2f"|format(abono.monto) }}</td>
+        <td class="text-center">{{ abono.fecha.strftime("%d/%m/%Y %H:%M:%S") }}</td>
+        <td class="text-center">
+          <form action="{{ url_for('eliminar_abono', abono_id=abono.id) }}?fecha={{ fecha.isoformat() }}"
+                method="POST" style="display:inline;">
+            <button type="submit"
+                    class="btn btn-danger"
+                    style="font-size:1rem; padding:6px 10px;"
+                    onclick="return confirm('¿Seguro que deseas eliminar este abono?')">
+              ❌
+            </button>
           </form>
         </td>
       </tr>
@@ -42,21 +39,6 @@
   <div class="alert alert-warning mt-3">No hubo abonos en esta fecha.</div>
   {% endif %}
 
-  <a href="{{ url_for('liquidacion') }}" class="btn btn-secondary mt-3">⬅ Volver</a>
+  <a href="{{ url_for('liquidacion') }}" class="btn btn-secondary mt-3">Volver a Liquidación</a>
 </div>
-
-<!-- CSS para eliminar flechitas en inputs numéricos -->
-<style>
-  input[type=number]::-webkit-inner-spin-button,
-  input[type=number]::-webkit-outer-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-  }
-  input[type=number] {
-    -moz-appearance: textfield;
-  }
-  .abono-realizado {
-    background-color: #d4edda !important; /* verde suave */
-  }
-</style>
 {% endblock %}
