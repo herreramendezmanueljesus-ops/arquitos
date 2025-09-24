@@ -205,20 +205,28 @@ def asegurar_liquidaciones_contiguas():
         dia += timedelta(days=1)
 
 def cliente_estado_class(cliente: Cliente):
+    """
+    Retorna la clase CSS según el estado del cliente:
+    - table-success: Cliente cancelado (saldo <= 0)
+    - table-warning: Cliente vencido
+    - table-danger: Cliente vencido hace más de 30 días
+    - '' (vacío): Cliente activo o con abono hoy
+    """
     try:
-        venc = cliente.fecha_creacion + timedelta(days=cliente.plazo)
         hoy = date.today()
+        venc = cliente.fecha_creacion + timedelta(days=cliente.plazo)
+
         if cliente.saldo <= 0:
-            return "table-success"  # 👉 este sí, porque ya canceló todo
+            return "table-success"  # Cliente cancelado
         if cliente.ultimo_abono_fecha == hoy:
-            return ""  # 👈 antes ponía "table-success", ahora dejamos vacío
+            return ""  # Cliente tiene abono hoy, sin marcar
         if hoy > venc + timedelta(days=30):
-            return "table-danger"
+            return "table-danger"  # Vencido hace más de 30 días
         if hoy > venc:
-            return "table-warning"
-        return ""
+            return "table-warning"  # Vencido
+        return ""  # Cliente activo, sin marcar
     except Exception:
-        return ""
+        return ""  # En caso de error, no marcar
 
 # ---------------------------
 # RUTAS: AUTH
@@ -280,6 +288,7 @@ def dashboard():
 @login_required
 def nuevo_cliente():
     if request.method == "POST":
+        codigo = request.form.get("codigo", "").strip()
         nombre = request.form.get("nombre", "").strip()
         direccion = request.form.get("direccion", "").strip()
         try:
@@ -290,7 +299,6 @@ def nuevo_cliente():
             flash("Monto, plazo o interés inválidos", "warning")
             return redirect(url_for("nuevo_cliente"))
 
-        # 👇 Aquí tomamos el orden desde el formulario
         try:
             orden = int(request.form.get("orden", 0))
         except ValueError:
@@ -300,69 +308,44 @@ def nuevo_cliente():
             last = Cliente.query.order_by(Cliente.orden.desc()).first()
             orden = (last.orden + 1) if last else 1
 
-        codigo = generar_codigo_numerico()
-        saldo_total = monto + (monto * (interes / 100.0))
+        # Verificar si el cliente ya existe (activo o cancelado)
+        cliente_existente = Cliente.query.filter_by(codigo=codigo).first()
+        if cliente_existente:
+            if cliente_existente.cancelado:
+                # Reactivar cliente cancelado
+                cliente_existente.cancelado = False
+                cliente_existente.orden = orden
+                cliente_existente.monto = monto
+                cliente_existente.plazo = plazo
+                cliente_existente.interes = interes
+                cliente_existente.saldo = monto + (monto * (interes / 100.0))
+                db.session.commit()
+                flash(f"Cliente {cliente_existente.nombre} reactivado y actualizado", "success")
+            else:
+                flash("El código ya pertenece a un cliente activo", "warning")
+                return redirect(url_for("nuevo_cliente"))
+        else:
+            # Crear cliente nuevo
+            saldo_total = monto + (monto * (interes / 100.0))
+            cliente = Cliente(
+                codigo=codigo,
+                orden=orden,
+                nombre=nombre,
+                direccion=direccion,
+                monto=monto,
+                plazo=plazo,
+                interes=interes,
+                saldo=saldo_total,
+                fecha_creacion=date.today(),
+                cancelado=False
+            )
+            db.session.add(cliente)
+            db.session.commit()
+            flash("Cliente creado y registrado", "success")
 
-        cliente = Cliente(
-            codigo=codigo,
-            orden=orden,
-            nombre=nombre,
-            direccion=direccion,
-            monto=monto,
-            plazo=plazo,
-            interes=interes,
-            saldo=saldo_total,
-            fecha_creacion=date.today()
-        )
-        db.session.add(cliente)
-        db.session.flush()  # obtener id antes de crear relación
-
-        # registrar préstamo y movimiento (salida en caja)
-        prestamo = Prestamo(cliente_id=cliente.id, monto=monto, fecha=datetime.utcnow())
-        db.session.add(prestamo)
-        mov = MovimientoCaja(tipo="salida", monto=monto, descripcion=f"Préstamo a {cliente.nombre}", fecha=datetime.utcnow())
-        db.session.add(mov)
-        db.session.flush()
-        prestamo.movimiento_id = mov.id
-
-        db.session.commit()
-        actualizar_liquidacion_por_movimiento(date.today())
-        flash("Cliente creado y préstamo registrado", "success")
-
-        # ✅ redirigir con ancla al cliente recién creado
-        return redirect(url_for("index") + f"#cliente-{cliente.id}")
-    
-    # 👇 importante: devolver la vista cuando es GET
-    return render_template("nuevo_cliente.html")
-
-
-@app.route("/editar_cliente/<int:cliente_id>", methods=["GET", "POST"])
-@login_required
-def editar_cliente(cliente_id):
-    cliente = Cliente.query.get_or_404(cliente_id)
-    if request.method == "POST":
-        try:
-            cliente.orden = int(request.form.get("orden", cliente.orden))
-        except ValueError:
-            flash("Orden inválido", "warning")
-            return redirect(url_for("editar_cliente", cliente_id=cliente_id))
-
-        cliente.nombre = request.form.get("nombre", cliente.nombre)
-        cliente.direccion = request.form.get("direccion", cliente.direccion)
-        try:
-            cliente.monto = float(request.form.get("monto", cliente.monto))
-            cliente.plazo = int(request.form.get("plazo", cliente.plazo))
-            cliente.interes = float(request.form.get("interes", cliente.interes))
-        except ValueError:
-            flash("Monto/plazo/interés inválidos", "warning")
-            return redirect(url_for("editar_cliente", cliente_id=cliente_id))
-
-        db.session.commit()
-        flash("Cliente actualizado", "success")
         return redirect(url_for("index"))
 
-    return render_template("editar_cliente.html", cliente=cliente)
-
+    return render_template("nuevo_cliente.html")
 
 @app.route("/eliminar_cliente/<int:cliente_id>", methods=["POST"])
 @login_required
@@ -389,6 +372,17 @@ def respuesta_ajax(success, mensaje=None, nuevo_saldo=None, cancelado=None):
             response["cancelado"] = cancelado
         return jsonify(response), 400 if not success else 200
     return None
+# helpers.py o dentro de app.py
+
+def actualizar_estado_cliente(cliente_id):
+    """Actualiza automáticamente el estado de un cliente según su saldo."""
+    cliente = Cliente.query.get(cliente_id)
+    if cliente:
+        if cliente.saldo <= 0:
+            cliente.cancelado = True
+        else:
+            cliente.cancelado = False
+        db.session.commit()
 
 # ---------------------------
 # ABONOS
@@ -442,6 +436,25 @@ def abonar(cliente_id):
     # Respuesta AJAX
     return respuesta_ajax(True, nuevo_saldo=f"{cliente.saldo:.2f}", cancelado=cliente.cancelado)
 
+# Ruta para ver clientes cancelados
+@app.route("/clientes_cancelados")
+def clientes_cancelados_view():
+    try:
+        # Marcar como cancelado a cualquier cliente con saldo 0
+        clientes = Cliente.query.all()
+        for c in clientes:
+            if c.saldo <= 0 and not c.cancelado:
+                c.cancelado = True
+        db.session.commit()
+
+        # Traer solo los cancelados
+        cancelados = Cliente.query.filter_by(cancelado=True).all()
+        print("Clientes cancelados encontrados:", cancelados)
+
+        return render_template("clientes_cancelados.html", clientes_cancelados=cancelados)
+    except Exception as e:
+        print("Error al cargar clientes cancelados:", e)
+        return "Error al cargar clientes cancelados"
 
 @app.route("/eliminar_abono/<int:abono_id>", methods=["POST"])
 @login_required
@@ -491,6 +504,24 @@ def detalle_abonos(fecha):
     abonos = Abono.query.filter(cast(Abono.fecha, Date) == fecha_obj).all()
     
     return render_template("detalle_abonos.html", abonos=abonos, fecha=fecha_obj)
+
+@app.route("/historial_abonos/<int:cliente_id>")
+def historial_abonos(cliente_id):
+    try:
+        cliente = Cliente.query.get_or_404(cliente_id)
+        # Traer todos los abonos de ese cliente con su ID
+        abonos = [
+            {
+                "id": a.id,
+                "fecha": a.fecha.strftime("%d/%m/%Y"),
+                "monto": a.monto
+            }
+            for a in cliente.abonos
+        ]
+        return jsonify({"abonos": abonos})
+    except Exception as e:
+        print("Error al obtener historial de abonos:", e)
+        return jsonify({"abonos": []})
 
 # ---------------------------
 # PRÉSTAMOS
@@ -681,3 +712,4 @@ with app.app_context():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
