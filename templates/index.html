@@ -17,8 +17,8 @@
 <div class="mb-3">
     <strong>Abonos hoy:</strong> {{ "%.2f"|format(liq_hoy.total_abonos) }} |
     <strong>Préstamos hoy:</strong> {{ "%.2f"|format(liq_hoy.total_prestamos) }} |
-    <strong>Caja:</strong> {{ "%.2f"|format(liq_hoy.caja) }} |
-    <strong>Paquete:</strong> {{ "%.2f"|format(liq_hoy.paquete) }}
+    <strong>Caja:</strong> {{ "%.2f"|format(liq_hoy.total_caja) }} |
+    <strong>Paquete:</strong> {{ "%.2f"|format(liq_hoy.total_paquetes) }}
 </div>
 <canvas id="grafico-liquidacion" width="400" height="150"></canvas>
 {% endif %}
@@ -43,9 +43,7 @@
       <!-- Orden -->
       <td style="width:100px;">
         <form action="{{ url_for('actualizar_orden', cliente_id=c.id) }}" method="post" class="d-flex actualizar-orden-form">
-          <input type="number" name="orden" value="{{ c.orden }}"
-                 class="form-control text-center"
-                 style="width:70px;" {% if c.cancelado %}disabled{% endif %}/>
+          <input type="number" name="orden" value="{{ c.orden }}" class="form-control text-center" style="width:70px;" {% if c.cancelado %}disabled{% endif %}/>
           <button type="submit" class="btn btn-outline-primary ms-1 btn-sm" {% if c.cancelado %}disabled{% endif %}>✔</button>
         </form>
       </td>
@@ -67,23 +65,22 @@
         {% if not c.cancelado %}
         <form action="{{ url_for('abonar', cliente_id=c.id) }}" method="post" class="d-flex">
           <input type="number" step="0.01" min="0.01" name="monto_abono" placeholder="0"
-                 class="form-control abono-input text-end" 
-                 data-cliente-id="{{ c.id }}" style="font-size: 1.5em; padding: 0.4em;"/>
+                 class="form-control abono-input text-end" data-cliente-id="{{ c.id }}" style="font-size: 1.5em; padding: 0.4em;"/>
           <button type="submit" class="btn btn-success ms-1 btn-sm">💵</button>
         </form>
-        <!-- Historial oculto (ya no se usará en tabla, pero lo dejamos por compatibilidad) -->
-        <div class="historial-abonos mt-1" id="historial-{{ c.id }}" style="display:none;"></div>
         {% else %}
         0.00
         {% endif %}
       </td>
 
-      <!-- Saldo -->
+      <!-- Saldo clickable -->
       <td>
         {% if c.cancelado %}
           0.00
         {% else %}
-          {{ "%.2f"|format(c.saldo) }}
+          <button class="btn btn-link p-0 saldo-clickable" data-cliente-id="{{ c.id }}">
+            {{ "%.2f"|format(c.saldo) }}
+          </button>
         {% endif %}
       </td>
 
@@ -130,9 +127,9 @@
   </div>
 </div>
 
-<!-- Script para abonos, scroll y historial -->
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+    // ABONOS
     const abonoForms = document.querySelectorAll('.abono-td form');
     abonoForms.forEach((form, idx, forms) => {
         form.addEventListener('submit', async (e) => {
@@ -163,17 +160,10 @@ document.addEventListener("DOMContentLoaded", () => {
                     td.classList.add("abono-realizado");
                     input.classList.add("abono-realizado");
 
-                    const saldoTd = td.nextElementSibling;
+                    const saldoTd = td.nextElementSibling.querySelector('.saldo-clickable');
                     if (saldoTd) saldoTd.textContent = data.nuevo_saldo;
 
                     input.value = '';
-
-                    const hoy = "{{ hoy.strftime('%Y-%m-%d') }}";
-                    let abonados = JSON.parse(localStorage.getItem("abonados_" + hoy) || "[]");
-                    if (!abonados.includes(clienteId)) {
-                        abonados.push(clienteId);
-                        localStorage.setItem("abonados_" + hoy, JSON.stringify(abonados));
-                    }
 
                     const nextForm = forms[idx + 1];
                     if (nextForm) {
@@ -190,89 +180,42 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // NUEVO: Long press + doble clic para abrir historial en modal
-    document.querySelectorAll('.abono-input').forEach(input => {
-        let pressTimer;
-        const clienteId = input.dataset.clienteId;
+    // HISTORIAL CLICK SALDO
+    document.querySelectorAll('.saldo-clickable').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const clienteId = btn.dataset.clienteId;
+            try {
+                const response = await fetch(`/historial_abonos/${clienteId}`);
+                const data = await response.json();
+                const tbody = document.getElementById("tablaHistorialBody");
 
-        // Long press
-        input.addEventListener('mousedown', () => {
-            pressTimer = setTimeout(() => {
-                cargarHistorial(clienteId);
-            }, 600);
-        });
-        input.addEventListener('mouseup', () => clearTimeout(pressTimer));
-        input.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+                if (data.abonos.length > 0) {
+                    tbody.innerHTML = data.abonos.map(a => `
+                        <tr>
+                          <td>${a.fecha}</td>
+                          <td>${a.hora || ""}</td>
+                          <td>${a.nombre || ""}</td>
+                          <td>${a.monto.toFixed(2)}</td>
+                          <td>
+                            <form method="post" action="/eliminar_abono/${a.id}" 
+                                  onsubmit="return confirm('¿Eliminar este abono?');">
+                              <button type="submit" class="btn btn-danger btn-sm">❌</button>
+                            </form>
+                          </td>
+                        </tr>
+                    `).join("");
+                } else {
+                    tbody.innerHTML = `<tr><td colspan="5"><em>No hay abonos registrados</em></td></tr>`;
+                }
 
-        // Doble clic
-        input.addEventListener('dblclick', () => {
-            cargarHistorial(clienteId);
-        });
-    });
-
-    async function cargarHistorial(clienteId) {
-        try {
-            const response = await fetch(`/historial_abonos/${clienteId}`);
-            const data = await response.json();
-            const tbody = document.getElementById("tablaHistorialBody");
-
-            if (data.abonos.length > 0) {
-                tbody.innerHTML = data.abonos.map(a => `
-                    <tr>
-                      <td>${a.fecha}</td>
-                      <td>${a.hora || ""}</td>
-                      <td>${a.nombre || ""}</td>
-                      <td>${a.monto.toFixed(2)}</td>
-                      <td>
-                        <form method="post" action="/eliminar_abono/${a.id}" 
-                              onsubmit="return confirm('¿Eliminar este abono?');">
-                          <button type="submit" class="btn btn-danger btn-sm">❌</button>
-                        </form>
-                      </td>
-                    </tr>
-                `).join("");
-            } else {
-                tbody.innerHTML = `<tr><td colspan="5"><em>No hay abonos registrados</em></td></tr>`;
+                const modal = new bootstrap.Modal(document.getElementById('modalHistorial'));
+                modal.show();
+            } catch (err) {
+                console.error(err);
+                alert("Error cargando historial.");
             }
-
-            const modal = new bootstrap.Modal(document.getElementById('modalHistorial'));
-            modal.show();
-        } catch (err) {
-            console.error(err);
-            alert("Error cargando historial.");
-        }
-    }
-
-    // Limpiar localStorage antiguo
-    const hoy = "{{ hoy.strftime('%Y-%m-%d') }}";
-    Object.keys(localStorage).forEach(k => {
-        if (k.startsWith("abonados_") && k !== "abonados_" + hoy) {
-            localStorage.removeItem(k);
-        }
+        });
     });
-
-    const abonados = JSON.parse(localStorage.getItem("abonados_" + hoy) || "[]");
-    abonados.forEach(id => {
-        const td = document.querySelector(`#cliente-${id} .abono-td`);
-        if (td) {
-            td.classList.add("abono-realizado");
-            const input = td.querySelector('.abono-input');
-            if (input) input.classList.add("abono-realizado");
-        }
-    });
-
-    // Scroll al nuevo cliente
-    const params = new URLSearchParams(window.location.search);
-    const nuevoId = params.get("nuevo_id");
-    if (nuevoId) {
-        const fila = document.getElementById("cliente-" + nuevoId);
-        if (fila) {
-            fila.scrollIntoView({ behavior: "smooth", block: "center" });
-            fila.style.transition = "background-color 1s ease";
-            fila.style.backgroundColor = "#fff3cd";
-            setTimeout(() => fila.style.backgroundColor = "", 3000);
-        }
-    }
 });
 </script>
 
@@ -288,9 +231,14 @@ document.addEventListener("DOMContentLoaded", () => {
     font-size: 1.5em;
     padding: 0.4em;
 }
+
+/* Botón saldo clickable */
+.saldo-clickable {
+    font-size: 1em;
+    font-weight: bold;
+    color: #0d6efd;
+    text-decoration: underline;
+}
 </style>
 
 {% endblock %}
-
-
-

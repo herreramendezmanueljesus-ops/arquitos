@@ -32,6 +32,8 @@
                 {% if session.get('usuario') %}
                     <span class="navbar-text text-white me-3">{{ session['usuario'] }}</span>
                     <a class="btn btn-sm btn-outline-light" href="{{ url_for('logout') }}">Salir</a>
+                {% else %}
+                    <a class="btn btn-sm btn-outline-light" href="{{ url_for('login') }}">Ingresar</a>
                 {% endif %}
             </div>
         </div>

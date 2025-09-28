@@ -1,6 +1,4 @@
-{% extends "base.html" %}
-{% block title %}Lodging{% endblock %}
-{% block content %}
-<h2>Lodging</h2>
-<p>Plantilla de lodging (placeholder). Si la usas con datos, puedo adaptarla para mostrar listados o formularios.</p>
-{% endblock %}
+@app.route("/lodging")
+@login_required
+def lodging():
+    return render_template("lodging.html")

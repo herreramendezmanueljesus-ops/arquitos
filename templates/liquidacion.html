@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 
 {% block content %}
@@ -9,21 +10,21 @@
         <!-- Entrada -->
         <form action="{{ url_for('caja_entrada') }}" method="POST" class="me-2 d-flex">
             <input type="number" name="monto" step="0.01" placeholder="Monto" class="form-control form-control-sm me-1" required>
-            <input type="text" name="descripcion" placeholder="Descripción" class="form-control form-control-sm me-1">
+            <input type="text" name="descripcion" placeholder="Descripción (opcional)" class="form-control form-control-sm me-1">
             <button type="submit" class="btn btn-success btn-sm">💰 Entrada</button>
         </form>
 
         <!-- Salida -->
         <form action="{{ url_for('caja_salida') }}" method="POST" class="me-2 d-flex">
             <input type="number" name="monto" step="0.01" placeholder="Monto" class="form-control form-control-sm me-1" required>
-            <input type="text" name="descripcion" placeholder="Descripción" class="form-control form-control-sm me-1">
+            <input type="text" name="descripcion" placeholder="Descripción (opcional)" class="form-control form-control-sm me-1">
             <button type="submit" class="btn btn-warning btn-sm">💸 Salida</button>
         </form>
 
         <!-- Gasto -->
         <form action="{{ url_for('caja_gasto') }}" method="POST" class="d-flex">
             <input type="number" name="monto" step="0.01" placeholder="Monto" class="form-control form-control-sm me-1" required>
-            <input type="text" name="descripcion" placeholder="Descripción" class="form-control form-control-sm me-1">
+            <input type="text" name="descripcion" placeholder="Descripción (opcional)" class="form-control form-control-sm me-1">
             <button type="submit" class="btn btn-danger btn-sm">🧾 Gasto</button>
         </form>
     </div>
@@ -46,17 +47,6 @@
         </div>
     </form>
 
-    <!-- Resumen si hay rango -->
-    {% if resumen_rango %}
-    <div class="alert alert-info">
-        <strong>Resumen del {{ resumen_rango.desde|default('---') }} al {{ resumen_rango.hasta|default('---') }}</strong><br>
-        Total abonos: {{ "%.2f"|format(resumen_rango.total_abonos|default(0)) }} |
-        Total préstamos: {{ "%.2f"|format(resumen_rango.total_prestamos|default(0)) }} |
-        Caja final: {{ "%.2f"|format(resumen_rango.caja|default(0)) }} |
-        Paquete final: {{ "%.2f"|format(resumen_rango.paquete|default(0)) }}
-    </div>
-    {% endif %}
-
     <!-- Tabla de liquidaciones -->
     <table class="table table-bordered table-hover">
         <thead class="table-dark">
@@ -64,6 +54,9 @@
                 <th>Fecha</th>
                 <th>Abonos</th>
                 <th>Préstamos</th>
+                <th>Entrada</th>
+                <th>Salida</th>
+                <th>Gastos</th>
                 <th>Caja</th>
                 <th>Paquete</th>
             </tr>
@@ -73,23 +66,54 @@
                 {% for liq in liquidaciones %}
                 <tr>
                     <td>{{ liq.fecha.strftime("%d/%m/%Y") if liq.fecha else "---" }}</td>
+
                     <td>
                         <a href="{{ url_for('detalle_abonos', fecha=liq.fecha.isoformat()) }}">
                             {{ "%.2f"|format(liq.total_abonos|default(0)) }}
                         </a>
                     </td>
+
                     <td>
                         <a href="{{ url_for('detalle_prestamos', fecha=liq.fecha.isoformat()) }}">
                             {{ "%.2f"|format(liq.total_prestamos|default(0)) }}
                         </a>
                     </td>
-                    <td>{{ "%.2f"|format(liq.caja|default(0)) }}</td>
-                    <td>{{ "%.2f"|format(liq.paquete|default(0)) }}</td>
+
+                    <td>
+                        <a href="{{ url_for('detalle_entrada', fecha=liq.fecha.isoformat()) }}">
+                            {{ "%.2f"|format(liq.entrada_efectivo|default(0)) }}
+                        </a>
+                    </td>
+
+                    <td>
+                        <a href="{{ url_for('detalle_salida', fecha=liq.fecha.isoformat()) }}">
+                            {{ "%.2f"|format(liq.salida_efectivo|default(0)) }}
+                        </a>
+                    </td>
+
+                    <td>
+                        <a href="{{ url_for('detalle_gasto', fecha=liq.fecha.isoformat()) }}">
+                            {{ "%.2f"|format(liq.gastos|default(0)) }}
+                        </a>
+                    </td>
+
+                    <!-- Caja clickeable por fecha -->
+                    <td>
+                        <a href="{{ url_for('detalle_caja', fecha=liq.fecha.isoformat()) }}">
+                            {{ "%.2f"|format(liq.total_caja|default(0)) }}
+                        </a>
+                    </td>
+
+                    <td>
+                        <a href="{{ url_for('detalle_paquete', fecha=liq.fecha.isoformat()) }}">
+                            {{ "%.2f"|format(liq.total_paquetes|default(0)) }}
+                        </a>
+                    </td>
                 </tr>
                 {% endfor %}
             {% else %}
                 <tr>
-                    <td colspan="5" class="text-center">⚠️ No hay registros</td>
+                    <td colspan="8" class="text-center">⚠️ No hay registros</td>
                 </tr>
             {% endif %}
         </tbody>
