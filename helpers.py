@@ -18,18 +18,15 @@ def day_range(fecha: date):
 # FUNCIONES DE CLIENTES
 # ---------------------------
 def generar_codigo_numerico():
-    """Genera un código numérico único de 6 dígitos para un cliente."""
     code = ''.join(random.choices("0123456789", k=6))
     while Cliente.query.filter_by(codigo=code).first():
         code = ''.join(random.choices("0123456789", k=6))
     return code
 
 def cliente_existente_por_codigo(codigo):
-    """Devuelve el cliente que tiene el código dado o None."""
     return Cliente.query.filter_by(codigo=codigo).first()
 
 def cliente_estado_class(cliente: Cliente):
-    """Devuelve la clase CSS según el estado del cliente."""
     try:
         hoy = date.today()
         venc = cliente.fecha_creacion + timedelta(days=cliente.plazo)
@@ -46,7 +43,6 @@ def cliente_estado_class(cliente: Cliente):
         return ""
 
 def actualizar_estado_cliente(cliente_id):
-    """Actualiza el estado 'cancelado' de un cliente según su saldo."""
     cliente = Cliente.query.get(cliente_id)
     if cliente:
         cliente.cancelado = cliente.saldo <= 0
@@ -56,7 +52,6 @@ def actualizar_estado_cliente(cliente_id):
 # CUOTAS
 # ---------------------------
 def calcular_cuotas(monto, plazo_dias, frecuencia="diario"):
-    """Calcula el valor de cada cuota según el plazo y la frecuencia."""
     if plazo_dias <= 0:
         return 0
     if frecuencia == "diario":
@@ -73,7 +68,6 @@ def calcular_cuotas(monto, plazo_dias, frecuencia="diario"):
     return round(valor_cuota, 2)
 
 def calcular_cuotas_objeto(obj):
-    """Calcula número de cuotas y valor para un objeto con monto, plazo, frecuencia."""
     if obj.frecuencia == 'diario':
         num_cuotas = obj.plazo
     elif obj.frecuencia == 'semanal':
@@ -91,13 +85,11 @@ def calcular_cuotas_objeto(obj):
 # FUNCIONES DE LIQUIDACIÓN Y PAQUETE
 # ---------------------------
 def paquete_total_actual():
-    """Suma de saldos de clientes activos con saldo > 0."""
     s = db.session.query(func.coalesce(func.sum(Cliente.saldo), 0))\
         .filter(Cliente.cancelado == False, Cliente.saldo > 0).scalar()
     return float(s or 0.0)
 
 def movimientos_caja_totales_para_dia(fecha: date):
-    """Totales de entradas, salidas y gastos de caja para un día."""
     start, end = day_range(fecha)
     entrada = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0))\
         .filter(MovimientoCaja.fecha.between(start, end), MovimientoCaja.tipo == "entrada").scalar() or 0.0
@@ -108,7 +100,6 @@ def movimientos_caja_totales_para_dia(fecha: date):
     return float(entrada), float(salida), float(gasto)
 
 def crear_liquidacion_para_fecha(fecha: date):
-    """Crea o devuelve la liquidación de una fecha específica."""
     liq = Liquidacion.query.filter_by(fecha=fecha).first()
     if liq:
         return liq
@@ -124,7 +115,7 @@ def crear_liquidacion_para_fecha(fecha: date):
     return liq
 
 def actualizar_liquidacion_por_movimiento(fecha: date):
-    """Recalcula los totales de la liquidación para la fecha dada."""
+    """Recalcula la liquidación de un día, considerando abonos, préstamos y caja acumulada."""
     fecha = fecha if isinstance(fecha, date) else fecha.date()
     liq = Liquidacion.query.filter_by(fecha=fecha).first()
     if not liq:
@@ -132,21 +123,18 @@ def actualizar_liquidacion_por_movimiento(fecha: date):
 
     start, end = day_range(fecha)
 
-    tot_abonos = float(
-        db.session.query(func.coalesce(func.sum(Abono.monto), 0))
-        .filter(Abono.fecha.between(start, end)).scalar() or 0.0
-    )
-    tot_prestamos = float(
-        db.session.query(func.coalesce(func.sum(Prestamo.monto), 0))
-        .filter(Prestamo.fecha.between(start, end)).scalar() or 0.0
-    )
+    tot_abonos = float(db.session.query(func.coalesce(func.sum(Abono.monto), 0))
+                       .filter(Abono.fecha.between(start, end)).scalar() or 0.0)
+    tot_prestamos = float(db.session.query(func.coalesce(func.sum(Prestamo.monto), 0))
+                           .filter(Prestamo.fecha.between(start, end)).scalar() or 0.0)
     paquete_actual = paquete_total_actual()
 
-    anterior = Liquidacion.query.filter(Liquidacion.fecha < fecha).order_by(Liquidacion.fecha.desc()).first()
+    anterior = Liquidacion.query.filter(Liquidacion.fecha < fecha)\
+        .order_by(Liquidacion.fecha.desc()).first()
     caja_anterior = float(anterior.total_caja) if anterior else 0.0
 
     mov_entrada, mov_salida, mov_gasto = movimientos_caja_totales_para_dia(fecha)
-    caja = caja_anterior + mov_entrada - mov_salida - mov_gasto
+    caja = caja_anterior + mov_entrada - mov_salida - mov_gasto - tot_prestamos
 
     liq.total_abonos = tot_abonos
     liq.total_prestamos = tot_prestamos
@@ -157,7 +145,6 @@ def actualizar_liquidacion_por_movimiento(fecha: date):
     return liq
 
 def asegurar_liquidaciones_contiguas():
-    """Crea liquidaciones para los días faltantes hasta hoy."""
     hoy = date.today()
     ultima = Liquidacion.query.order_by(Liquidacion.fecha.desc()).first()
     if not ultima:
@@ -168,8 +155,28 @@ def asegurar_liquidaciones_contiguas():
         crear_liquidacion_para_fecha(dia)
         dia += timedelta(days=1)
 
+# ---------------------------
+# FUNCIONES AUTOMÁTICAS DE REGISTRO
+# ---------------------------
+def registrar_abono_y_actualizar_caja(abono: Abono):
+    db.session.add(abono)
+    db.session.commit()
+    actualizar_liquidacion_por_movimiento(abono.fecha)
+
+def registrar_prestamo_y_actualizar_caja(prestamo: Prestamo):
+    db.session.add(prestamo)
+    db.session.commit()
+    actualizar_liquidacion_por_movimiento(prestamo.fecha)
+
+def registrar_movimiento_caja_y_actualizar_caja(movimiento: MovimientoCaja):
+    db.session.add(movimiento)
+    db.session.commit()
+    actualizar_liquidacion_por_movimiento(movimiento.fecha)
+
+# ---------------------------
+# FUNCIONES DE CONSULTA
+# ---------------------------
 def calcular_total_caja(fecha):
-    """Devuelve totales diarios incluyendo abonos, préstamos, caja y paquetes."""
     if isinstance(fecha, datetime):
         fecha = fecha.date()
     start, end = day_range(fecha)
@@ -179,7 +186,12 @@ def calcular_total_caja(fecha):
     total_prestamos = db.session.query(func.coalesce(func.sum(Prestamo.monto), 0))\
         .filter(cast(Prestamo.fecha, Date) == fecha).scalar() or 0.0
     entrada_efectivo, salida_efectivo, gastos = movimientos_caja_totales_para_dia(fecha)
-    total_caja = entrada_efectivo - salida_efectivo - gastos
+
+    anterior = Liquidacion.query.filter(Liquidacion.fecha < fecha)\
+        .order_by(Liquidacion.fecha.desc()).first()
+    caja_anterior = float(anterior.total_caja) if anterior else 0.0
+
+    total_caja = caja_anterior + entrada_efectivo - salida_efectivo - gastos - total_prestamos
     total_paquetes = paquete_total_actual()
 
     return {
@@ -193,7 +205,6 @@ def calcular_total_caja(fecha):
     }
 
 def paquete_total_para_fecha(fecha):
-    """Devuelve el total de paquetes y el detalle de clientes hasta una fecha."""
     fecha = fecha if isinstance(fecha, date) else fecha.date()
     clientes = Cliente.query.filter(Cliente.cancelado == False).all()
     total = 0.0
