@@ -1,59 +1,45 @@
+
 {% extends "base.html" %}
-{% block title %}Liquidación{% endblock %}
+{% block title %}Liquidación del Día{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
 
-  <!-- ENCABEZADO -->
+  <!-- Título principal -->
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-    <h2 class="m-0">📊 Liquidación del Día</h2>
+    <h2 class="m-0 text-center w-100">📊 Liquidación del Día</h2>
     <a href="{{ url_for('liquidaciones') }}" class="btn btn-outline-primary btn-sm">📜 Ver Historial</a>
   </div>
 
-  <!-- 🔍 BUSCAR LIQUIDACIÓN POR FECHA -->
-  <form action="{{ url_for('liquidacion') }}" method="get" class="mb-3 p-3 bg-light border rounded">
-    <div class="row g-2 align-items-center">
-      <div class="col-md-4">
-        <label for="desde" class="form-label mb-0 fw-bold">Desde</label>
-        <input type="date" id="desde" name="desde" class="form-control form-control-sm"
-               value="{{ request.args.get('desde', '') }}">
-      </div>
-      <div class="col-md-4">
-        <label for="hasta" class="form-label mb-0 fw-bold">Hasta</label>
-        <input type="date" id="hasta" name="hasta" class="form-control form-control-sm"
-               value="{{ request.args.get('hasta', '') }}">
-      </div>
-      <div class="col-md-4 d-flex align-items-end">
-        <button type="submit" class="btn btn-primary btn-sm w-100">🔎 Buscar</button>
-      </div>
-    </div>
-  </form>
-
   <!-- BOTONES DE CAJA -->
-  <div class="d-flex justify-content-end mb-3 flex-wrap gap-2">
+  <div class="d-flex justify-content-between flex-wrap gap-3 mb-4 text-center">
+
     <!-- Entrada -->
-    <form action="{{ url_for('caja_entrada') }}" method="POST" class="d-flex flex-wrap gap-1">
-      <input type="number" name="monto" step="0.01" placeholder="Monto" class="form-control form-control-sm" required>
-      <input type="text" name="descripcion" placeholder="Descripción (opcional)" class="form-control form-control-sm">
-      <button type="submit" class="btn btn-success btn-sm">💰 Entrada</button>
+    <form action="{{ url_for('caja_entrada') }}" method="POST" class="form-caja bg-light border rounded shadow-sm">
+      <h6 class="text-success mb-2">💰 Entrada de Efectivo</h6>
+      <input type="number" name="monto" step="0.01" placeholder="Monto" class="form-control form-control-sm mb-2" required>
+      <input type="text" name="descripcion" placeholder="Descripción (opcional)" class="form-control form-control-sm mb-2">
+      <button type="submit" class="btn btn-success btn-sm w-100">Registrar Entrada</button>
     </form>
 
     <!-- Salida -->
-    <form action="{{ url_for('caja_salida') }}" method="POST" class="d-flex flex-wrap gap-1">
-      <input type="number" name="monto" step="0.01" placeholder="Monto" class="form-control form-control-sm" required>
-      <input type="text" name="descripcion" placeholder="Descripción (opcional)" class="form-control form-control-sm">
-      <button type="submit" class="btn btn-warning btn-sm">💸 Salida</button>
+    <form action="{{ url_for('caja_salida') }}" method="POST" class="form-caja bg-light border rounded shadow-sm">
+      <h6 class="text-warning mb-2">💸 Salida de Efectivo</h6>
+      <input type="number" name="monto" step="0.01" placeholder="Monto" class="form-control form-control-sm mb-2" required>
+      <input type="text" name="descripcion" placeholder="Descripción (opcional)" class="form-control form-control-sm mb-2">
+      <button type="submit" class="btn btn-warning btn-sm w-100">Registrar Salida</button>
     </form>
 
     <!-- Gasto -->
-    <form action="{{ url_for('caja_movimiento', tipo='gasto') }}" method="POST" class="d-flex flex-wrap gap-1">
-      <input type="number" name="monto" step="0.01" placeholder="Monto" class="form-control form-control-sm" required>
-      <input type="text" name="descripcion" placeholder="Descripción (opcional)" class="form-control form-control-sm">
-      <button type="submit" class="btn btn-danger btn-sm">🧾 Gasto</button>
+    <form action="{{ url_for('caja_movimiento', tipo='gasto') }}" method="POST" class="form-caja bg-light border rounded shadow-sm">
+      <h6 class="text-danger mb-2">🧾 Registrar Gasto</h6>
+      <input type="number" name="monto" step="0.01" placeholder="Monto" class="form-control form-control-sm mb-2" required>
+      <input type="text" name="descripcion" placeholder="Descripción (opcional)" class="form-control form-control-sm mb-2">
+      <button type="submit" class="btn btn-danger btn-sm w-100">Registrar Gasto</button>
     </form>
   </div>
 
-  <!-- RESUMEN PRINCIPAL -->
+  <!-- RESUMEN DEL DÍA -->
   <div class="card shadow-sm mb-4">
     <div class="card-body text-center">
       <h5 class="card-title mb-3">📅 Resumen Diario — {{ hoy.strftime("%d/%m/%Y") }}</h5>
@@ -64,15 +50,15 @@
         <p class="text-warning"><strong>💸 Salidas:</strong> ${{ "%.2f"|format(liq.salidas or 0) }}</p>
         <p class="text-danger"><strong>🧾 Gastos:</strong> ${{ "%.2f"|format(liq.gastos or 0) }}</p>
         {% if (liq.caja or 0) >= 0 %}
-          <p class="text-success"><strong>💼 Caja Final:</strong> ${{ "%.2f"|format(liq.caja or 0) }}</strong></p>
+          <p class="text-success"><strong>💼 Caja Final:</strong> ${{ "%.2f"|format(liq.caja or 0) }}</p>
         {% else %}
-          <p class="text-danger"><strong>💼 Caja Final:</strong> ${{ "%.2f"|format(liq.caja or 0) }}</strong></p>
+          <p class="text-danger"><strong>💼 Caja Final:</strong> ${{ "%.2f"|format(liq.caja or 0) }}</p>
         {% endif %}
       </div>
     </div>
   </div>
 
-  <!-- TABLA DETALLE -->
+  <!-- TABLA -->
   <table class="table table-bordered table-hover align-middle text-center">
     <thead class="table-dark">
       <tr>
@@ -89,39 +75,26 @@
       <tr>
         <td>{{ hoy.strftime("%d/%m/%Y") }}</td>
         <td>${{ "%.2f"|format(liq.caja_manual or 0) }}</td>
-
-        <!-- Ingresos -->
         <td>
-          <a href="{{ url_for('movimientos_por_dia', tipo='entrada', fecha=hoy.strftime('%Y-%m-%d')) }}"
-             class="text-decoration-none text-success fw-bold">
-             ${{ "%.2f"|format(liq.entradas or 0) }}
+          <a href="{{ url_for('movimientos_por_dia', tipo='entrada', fecha=hoy.strftime('%Y-%m-%d')) }}" class="text-decoration-none text-success fw-bold">
+            ${{ "%.2f"|format(liq.entradas or 0) }}
           </a>
         </td>
-
-        <!-- Préstamos -->
         <td>
-          <a href="{{ url_for('movimientos_por_dia', tipo='prestamo', fecha=hoy.strftime('%Y-%m-%d')) }}"
-             class="text-decoration-none text-primary fw-bold">
-             ${{ "%.2f"|format(liq.prestamos_hoy or 0) }}
+          <a href="{{ url_for('prestamos_por_dia', fecha=hoy.strftime('%Y-%m-%d')) }}" class="text-decoration-none text-primary fw-bold">
+            ${{ "%.2f"|format(liq.prestamos_hoy or 0) }}
           </a>
         </td>
-
-        <!-- Salidas -->
         <td>
-          <a href="{{ url_for('movimientos_por_dia', tipo='salida', fecha=hoy.strftime('%Y-%m-%d')) }}"
-             class="text-decoration-none text-warning fw-bold">
-             ${{ "%.2f"|format(liq.salidas or 0) }}
+          <a href="{{ url_for('movimientos_por_dia', tipo='salida', fecha=hoy.strftime('%Y-%m-%d')) }}" class="text-decoration-none text-warning fw-bold">
+            ${{ "%.2f"|format(liq.salidas or 0) }}
           </a>
         </td>
-
-        <!-- Gastos -->
         <td>
-          <a href="{{ url_for('movimientos_por_dia', tipo='gasto', fecha=hoy.strftime('%Y-%m-%d')) }}"
-             class="text-decoration-none text-danger fw-bold">
-             ${{ "%.2f"|format(liq.gastos or 0) }}
+          <a href="{{ url_for('movimientos_por_dia', tipo='gasto', fecha=hoy.strftime('%Y-%m-%d')) }}" class="text-decoration-none text-danger fw-bold">
+            ${{ "%.2f"|format(liq.gastos or 0) }}
           </a>
         </td>
-
         {% if (liq.caja or 0) >= 0 %}
           <td class="text-success"><strong>${{ "%.2f"|format(liq.caja or 0) }}</strong></td>
         {% else %}
@@ -131,7 +104,7 @@
     </tbody>
   </table>
 
-  <!-- TOTALES GLOBALES -->
+  <!-- TOTALES -->
   <div class="alert alert-secondary text-center mt-3">
     <strong>📦 Caja total:</strong> ${{ "%.2f"|format(total_caja) }} |
     <strong>💳 Cartera total:</strong> ${{ "%.2f"|format(cartera_total) }}
@@ -145,5 +118,24 @@
   .text-danger strong { color: #dc3545; }
   .text-warning strong { color: #ffc107; }
   .text-primary strong { color: #0d6efd; }
+
+  /* ✅ Nuevo estilo para los formularios de caja */
+  .form-caja {
+    flex: 1;
+    min-width: 280px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%;
+  }
+
+  .d-flex.flex-wrap.gap-3.mb-4.text-center {
+    align-items: stretch;
+  }
+
+  .form-caja input {
+    text-align: center;
+  }
 </style>
 {% endblock %}
