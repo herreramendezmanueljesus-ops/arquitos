@@ -33,7 +33,8 @@
         <tr>
           <th>Fecha</th>
           <th>Caja Anterior</th>
-          <th>Ingresos</th>
+          <th>Ingresos (Abonos)</th>
+          <th>Entradas Caja</th>
           <th>Préstamos</th>
           <th>Salidas</th>
           <th>Gastos</th>
@@ -46,15 +47,57 @@
           <tr>
             <td>{{ liq.fecha.strftime("%d-%m-%Y") }}</td>
             <td>${{ "%.2f"|format(liq.caja_manual or 0) }}</td>
-            <td class="text-success fw-bold">${{ "%.2f"|format(liq.entradas or 0) }}</td>
-            <td class="text-primary fw-bold">${{ "%.2f"|format(liq.prestamos_hoy or 0) }}</td>
-            <td class="text-warning fw-bold">${{ "%.2f"|format(liq.salidas or 0) }}</td>
-            <td class="text-danger fw-bold">${{ "%.2f"|format(liq.gastos or 0) }}</td>
-            <td class="text-success fw-bold">${{ "%.2f"|format(liq.caja or 0) }}</td>
+
+            <!-- 💰 Clickable: Ingresos (abonos) -->
+            <td>
+              <a href="{{ url_for('movimientos_por_dia', tipo='entrada', fecha=liq.fecha.strftime('%Y-%m-%d')) }}"
+                 class="text-decoration-none text-success fw-bold hover-underline">
+                ${{ "%.2f"|format(liq.entradas or 0) }}
+              </a>
+            </td>
+
+            <!-- 💵 Clickable: Entradas manuales -->
+            <td>
+              <a href="{{ url_for('movimientos_por_dia', tipo='entrada_manual', fecha=liq.fecha.strftime('%Y-%m-%d')) }}"
+                 class="text-decoration-none text-info fw-bold hover-underline">
+                ${{ "%.2f"|format(liq.entradas_caja or 0) }}
+              </a>
+            </td>
+
+            <!-- 🏦 Clickable: Préstamos -->
+            <td>
+              <a href="{{ url_for('prestamos_por_dia', fecha=liq.fecha.strftime('%Y-%m-%d')) }}"
+                 class="text-decoration-none text-primary fw-bold hover-underline">
+                ${{ "%.2f"|format(liq.prestamos_hoy or 0) }}
+              </a>
+            </td>
+
+            <!-- 💸 Clickable: Salidas -->
+            <td>
+              <a href="{{ url_for('movimientos_por_dia', tipo='salida', fecha=liq.fecha.strftime('%Y-%m-%d')) }}"
+                 class="text-decoration-none text-warning fw-bold hover-underline">
+                ${{ "%.2f"|format(liq.salidas or 0) }}
+              </a>
+            </td>
+
+            <!-- 🧾 Clickable: Gastos -->
+            <td>
+              <a href="{{ url_for('movimientos_por_dia', tipo='gasto', fecha=liq.fecha.strftime('%Y-%m-%d')) }}"
+                 class="text-decoration-none text-danger fw-bold hover-underline">
+                ${{ "%.2f"|format(liq.gastos or 0) }}
+              </a>
+            </td>
+
+            <!-- 💼 Caja Final -->
+            {% if (liq.caja or 0) >= 0 %}
+              <td class="text-success"><strong>${{ "%.2f"|format(liq.caja or 0) }}</strong></td>
+            {% else %}
+              <td class="text-danger"><strong>${{ "%.2f"|format(liq.caja or 0) }}</strong></td>
+            {% endif %}
           </tr>
           {% endfor %}
         {% else %}
-          <tr><td colspan="7">No hay liquidaciones en el rango seleccionado.</td></tr>
+          <tr><td colspan="8">No hay liquidaciones en el rango seleccionado.</td></tr>
         {% endif %}
       </tbody>
 
@@ -64,6 +107,7 @@
           <th>Total</th>
           <th>-</th>
           <th class="text-success fw-bold">${{ "%.2f"|format(total_entradas) }}</th>
+          <th class="text-info fw-bold">${{ "%.2f"|format(total_entradas_caja) }}</th>
           <th class="text-primary fw-bold">${{ "%.2f"|format(total_prestamos) }}</th>
           <th class="text-warning fw-bold">${{ "%.2f"|format(total_salidas) }}</th>
           <th class="text-danger fw-bold">${{ "%.2f"|format(total_gastos) }}</th>
@@ -85,5 +129,11 @@
   .text-danger strong { color: #dc3545; }
   .text-warning strong { color: #ffc107; }
   .text-primary strong { color: #0d6efd; }
+
+  /* ✨ Hover clickables */
+  .hover-underline:hover {
+    text-decoration: underline;
+    opacity: 0.9;
+  }
 </style>
 {% endblock %}

@@ -44,16 +44,9 @@
         </form>
       </td>
 
-      <!-- Código -->
       <td>{{ c.codigo }}</td>
-
-      <!-- Fecha -->
       <td>{{ c.fecha_creacion.strftime("%d/%m/%Y") }}</td>
-
-      <!-- Nombre -->
       <td>{{ c.nombre }}</td>
-
-      <!-- Monto total de préstamos -->
       <td>{{ "%.2f"|format(c.capital_total()) }}</td>
 
       <!-- Abono -->
@@ -70,7 +63,7 @@
         {% endif %}
       </td>
 
-      <!-- Saldo total (clickable para historial) -->
+      <!-- Saldo (clickable para historial) -->
       <td>
         {% if c.cancelado %}
           <span class="text-muted">0.00</span>
@@ -112,10 +105,11 @@
               <th>Hora</th>
               <th>Nombre</th>
               <th>Monto</th>
+              <th>Acción</th>
             </tr>
           </thead>
           <tbody id="tablaHistorialBody">
-            <tr><td colspan="4"><em>Cargando...</em></td></tr>
+            <tr><td colspan="5"><em>Cargando...</em></td></tr>
           </tbody>
         </table>
       </div>
@@ -123,55 +117,73 @@
   </div>
 </div>
 
+<!-- ================== SCRIPTS ================== -->
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll('.saldo-clickable').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const clienteId = btn.dataset.clienteId;
+      try {
+        const response = await fetch(`/historial_abonos/${clienteId}`);
+        const data = await response.json();
+        const tbody = document.getElementById("tablaHistorialBody");
 
-    // HISTORIAL CLICK SALDO
-    document.querySelectorAll('.saldo-clickable').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const clienteId = btn.dataset.clienteId;
-            try {
-                const response = await fetch(`/historial_abonos/${clienteId}`);
-                const data = await response.json();
-                const tbody = document.getElementById("tablaHistorialBody");
+        if (data.abonos.length > 0) {
+          tbody.innerHTML = data.abonos.map(a => `
+            <tr>
+              <td>${a.fecha}</td>
+              <td>${a.hora || ""}</td>
+              <td>${a.nombre || ""}</td>
+              <td>$${a.monto.toFixed(2)}</td>
+              <td>
+                <button class="btn btn-danger btn-sm eliminar-abono" data-id="${a.id}">
+                  🗑️
+                </button>
+              </td>
+            </tr>
+          `).join("");
+        } else {
+          tbody.innerHTML = `<tr><td colspan="5"><em>No hay abonos registrados</em></td></tr>`;
+        }
 
-                if (data.abonos.length > 0) {
-                    tbody.innerHTML = data.abonos.map(a => `
-                        <tr>
-                          <td>${a.fecha}</td>
-                          <td>${a.hora || ""}</td>
-                          <td>${a.nombre || ""}</td>
-                          <td>${a.monto.toFixed(2)}</td>
-                        </tr>
-                    `).join("");
-                } else {
-                    tbody.innerHTML = `<tr><td colspan="4"><em>No hay abonos registrados</em></td></tr>`;
-                }
-
-                new bootstrap.Modal(document.getElementById('modalHistorial')).show();
-            } catch (err) {
-                console.error(err);
-                alert("Error al cargar historial.");
+        // Activar eliminación
+        document.querySelectorAll('.eliminar-abono').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!confirm('¿Seguro que deseas eliminar este abono?')) return;
+            const id = btn.dataset.id;
+            const res = await fetch(`/eliminar_abono/${id}`, { method: 'POST' });
+            if (res.ok) {
+              btn.closest('tr').remove();
+            } else {
+              alert('Error al eliminar el abono.');
             }
+          });
         });
+
+        new bootstrap.Modal(document.getElementById('modalHistorial')).show();
+      } catch (err) {
+        console.error(err);
+        alert("Error al cargar historial.");
+      }
     });
+  });
 });
 </script>
 
 <style>
 .cancelado {
-    background-color: #f8d7da;
-    color: #721c24;
+  background-color: #f8d7da;
+  color: #721c24;
 }
 .abono-input {
-    font-size: 1.2em;
-    padding: 0.3em;
+  font-size: 2em; /* 200% */
+  padding: 0.4em;
 }
 .saldo-clickable {
-    font-size: 1em;
-    font-weight: bold;
-    color: #0d6efd;
-    text-decoration: underline;
+  font-size: 1em;
+  font-weight: bold;
+  color: #0d6efd;
+  text-decoration: underline;
 }
 </style>
 
