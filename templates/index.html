@@ -1,27 +1,22 @@
 {% extends "base.html" %}
-
 {% block title %}Inicio{% endblock %}
 
 {% block content %}
-<h2 class="mb-4">Listado de Clientes</h2>
+<h2 class="mb-4">📋 Listado de Clientes</h2>
 
 <!-- Botones principales -->
-<div class="mb-3">
-    <a class="btn btn-primary" href="{{ url_for('nuevo_cliente') }}">➕ Nuevo Cliente</a>
-    <a class="btn btn-secondary" href="{{ url_for('liquidacion') }}">📊 Ver Liquidación</a>
+<div class="mb-3 d-flex flex-wrap gap-2">
+  <a class="btn btn-primary" href="{{ url_for('nuevo_cliente') }}">➕ Nuevo Cliente</a>
+  <a class="btn btn-secondary" href="{{ url_for('liquidacion') }}">📊 Ver Liquidación</a>
+  <a class="btn btn-outline-dark" href="{{ url_for('clientes_cancelados_view') }}">🚫 Cancelados</a>
 </div>
 
-<!-- Totales de hoy -->
-<p><strong>Hoy:</strong> {{ hoy.strftime("%d/%m/%Y") }}</p>
-{% if liq_hoy %}
+<!-- Fecha y totales -->
+<p><strong>Fecha:</strong> {{ hoy.strftime("%d/%m/%Y") }}</p>
 <div class="mb-3">
-    <strong>Abonos hoy:</strong> {{ "%.2f"|format(liq_hoy.total_abonos) }} |
-    <strong>Préstamos hoy:</strong> {{ "%.2f"|format(liq_hoy.total_prestamos) }} |
-    <strong>Caja:</strong> {{ "%.2f"|format(liq_hoy.total_caja) }} |
-    <strong>Paquete:</strong> {{ "%.2f"|format(liq_hoy.total_paquetes) }}
+  <strong>Caja total:</strong> ${{ "%.2f"|format(resumen.caja_total) }} |
+  <strong>Cartera total:</strong> ${{ "%.2f"|format(resumen.cartera_total) }}
 </div>
-<canvas id="grafico-liquidacion" width="400" height="150"></canvas>
-{% endif %}
 
 {% if clientes %}
 <table id="tabla-clientes" class="table table-bordered table-hover align-middle text-center">
@@ -31,8 +26,8 @@
       <th>Código</th>
       <th>Fecha</th>
       <th>Nombre</th>
-      <th>Monto</th>
-      <th>Abono</th>
+      <th>Monto Prestado</th>
+      <th>Abonar</th>
       <th>Saldo</th>
       <th>Eliminar</th>
     </tr>
@@ -43,7 +38,8 @@
       <!-- Orden -->
       <td style="width:100px;">
         <form action="{{ url_for('actualizar_orden', cliente_id=c.id) }}" method="post" class="d-flex actualizar-orden-form">
-          <input type="number" name="orden" value="{{ c.orden }}" class="form-control text-center" style="width:70px;" {% if c.cancelado %}disabled{% endif %}/>
+          <input type="number" name="orden" value="{{ c.orden }}" class="form-control text-center" style="width:70px;"
+                 {% if c.cancelado %}disabled{% endif %}>
           <button type="submit" class="btn btn-outline-primary ms-1 btn-sm" {% if c.cancelado %}disabled{% endif %}>✔</button>
         </form>
       </td>
@@ -57,29 +53,30 @@
       <!-- Nombre -->
       <td>{{ c.nombre }}</td>
 
-      <!-- Monto -->
-      <td>{{ "%.2f"|format(c.monto) }}</td>
+      <!-- Monto total de préstamos -->
+      <td>{{ "%.2f"|format(c.capital_total()) }}</td>
 
       <!-- Abono -->
       <td class="abono-td">
         {% if not c.cancelado %}
-        <form action="{{ url_for('abonar', cliente_id=c.id) }}" method="post" class="d-flex">
-          <input type="number" step="0.01" min="0.01" name="monto_abono" placeholder="0"
-                 class="form-control abono-input text-end" data-cliente-id="{{ c.id }}" style="font-size: 1.5em; padding: 0.4em;"/>
+        <form action="{{ url_for('registrar_abono_por_codigo') }}" method="post" class="d-flex">
+          <input type="hidden" name="codigo" value="{{ c.codigo }}">
+          <input type="number" step="0.01" min="0.01" name="monto" placeholder="0"
+                 class="form-control abono-input text-end" data-codigo="{{ c.codigo }}" required>
           <button type="submit" class="btn btn-success ms-1 btn-sm">💵</button>
         </form>
         {% else %}
-        0.00
+          <span class="text-muted">Cancelado</span>
         {% endif %}
       </td>
 
-      <!-- Saldo clickable -->
+      <!-- Saldo total (clickable para historial) -->
       <td>
         {% if c.cancelado %}
-          0.00
+          <span class="text-muted">0.00</span>
         {% else %}
           <button class="btn btn-link p-0 saldo-clickable" data-cliente-id="{{ c.id }}">
-            {{ "%.2f"|format(c.saldo) }}
+            {{ "%.2f"|format(c.saldo_total()) }}
           </button>
         {% endif %}
       </td>
@@ -96,7 +93,7 @@
   </tbody>
 </table>
 {% else %}
-<div class="alert alert-info">No hay clientes registrados todavía.</div>
+<div class="alert alert-info">No hay clientes registrados aún.</div>
 {% endif %}
 
 <!-- ================== MODAL HISTORIAL ================== -->
@@ -115,11 +112,10 @@
               <th>Hora</th>
               <th>Nombre</th>
               <th>Monto</th>
-              <th>Eliminar</th>
             </tr>
           </thead>
           <tbody id="tablaHistorialBody">
-            <tr><td colspan="5"><em>Cargando...</em></td></tr>
+            <tr><td colspan="4"><em>Cargando...</em></td></tr>
           </tbody>
         </table>
       </div>
@@ -129,56 +125,6 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-    // ABONOS
-    const abonoForms = document.querySelectorAll('.abono-td form');
-    abonoForms.forEach((form, idx, forms) => {
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const input = form.querySelector('.abono-input');
-            const td = form.closest('.abono-td');
-            const clienteId = form.action.split('/').pop();
-            const monto = parseFloat(input.value);
-
-            if (isNaN(monto) || monto <= 0) {
-                alert("Monto inválido");
-                return;
-            }
-
-            try {
-                const response = await fetch(form.action, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body: `monto_abono=${monto}`
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    td.classList.add("abono-realizado");
-                    input.classList.add("abono-realizado");
-
-                    const saldoTd = td.nextElementSibling.querySelector('.saldo-clickable');
-                    if (saldoTd) saldoTd.textContent = data.nuevo_saldo;
-
-                    input.value = '';
-
-                    const nextForm = forms[idx + 1];
-                    if (nextForm) {
-                        const nextInput = nextForm.querySelector('.abono-input');
-                        if (nextInput) nextInput.focus();
-                    }
-                } else {
-                    alert(data.mensaje);
-                }
-            } catch (err) {
-                console.error(err);
-                alert("Error al registrar abono.");
-            }
-        });
-    });
 
     // HISTORIAL CLICK SALDO
     document.querySelectorAll('.saldo-clickable').forEach(btn => {
@@ -196,23 +142,16 @@ document.addEventListener("DOMContentLoaded", () => {
                           <td>${a.hora || ""}</td>
                           <td>${a.nombre || ""}</td>
                           <td>${a.monto.toFixed(2)}</td>
-                          <td>
-                            <form method="post" action="/eliminar_abono/${a.id}" 
-                                  onsubmit="return confirm('¿Eliminar este abono?');">
-                              <button type="submit" class="btn btn-danger btn-sm">❌</button>
-                            </form>
-                          </td>
                         </tr>
                     `).join("");
                 } else {
-                    tbody.innerHTML = `<tr><td colspan="5"><em>No hay abonos registrados</em></td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="4"><em>No hay abonos registrados</em></td></tr>`;
                 }
 
-                const modal = new bootstrap.Modal(document.getElementById('modalHistorial'));
-                modal.show();
+                new bootstrap.Modal(document.getElementById('modalHistorial')).show();
             } catch (err) {
                 console.error(err);
-                alert("Error cargando historial.");
+                alert("Error al cargar historial.");
             }
         });
     });
@@ -220,19 +159,14 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 
 <style>
-/* Clientes cancelados con fondo rojo suave */
 .cancelado {
     background-color: #f8d7da;
     color: #721c24;
 }
-
-/* Input de abonos más grande */
 .abono-input {
-    font-size: 1.5em;
-    padding: 0.4em;
+    font-size: 1.2em;
+    padding: 0.3em;
 }
-
-/* Botón saldo clickable */
 .saldo-clickable {
     font-size: 1em;
     font-weight: bold;

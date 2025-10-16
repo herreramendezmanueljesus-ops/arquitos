@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Movimientos de Caja — {{ tipo|capitalize }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <h2 class="m-0">
+      {% if tipo == 'entrada' %}
+        💰 Entradas de Caja — {{ fecha.strftime("%d/%m/%Y") }}
+      {% elif tipo == 'salida' %}
+        💸 Salidas de Caja — {{ fecha.strftime("%d/%m/%Y") }}
+      {% elif tipo == 'gasto' %}
+        🧾 Gastos — {{ fecha.strftime("%d/%m/%Y") }}
+      {% endif %}
+    </h2>
+    <a href="{{ url_for('liquidaciones') }}" class="btn btn-outline-secondary btn-sm">⬅️ Volver al Historial</a>
+  </div>
+
+  {% if movimientos %}
+  <table class="table table-bordered table-hover align-middle text-center">
+    <thead class="table-dark">
+      <tr>
+        <th>Fecha y Hora</th>
+        <th>Descripción</th>
+        <th>Monto</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in movimientos %}
+      <tr>
+        <td>{{ m.fecha.strftime("%d/%m/%Y %H:%M:%S") }}</td>
+        <td>{{ m.descripcion or '—' }}</td>
+        <td class="{% if tipo == 'entrada' %}text-success{% elif tipo == 'salida' %}text-warning{% else %}text-danger{% endif %}">
+          <strong>${{ "%.2f"|format(m.monto) }}</strong>
+        </td>
+      </tr>
+      {% endfor %}
+      <tr class="table-secondary fw-bold">
+        <td colspan="2">Total {{ tipo|capitalize }}s</td>
+        <td>${{ "%.2f"|format(total or 0) }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  {% else %}
+  <div class="alert alert-warning text-center">
+    ⚠️ No se encontraron movimientos de tipo <strong>{{ tipo }}</strong> para este día.
+  </div>
+  {% endif %}
+</div>
+
+<style>
+  .table td, .table th {
+    vertical-align: middle;
+  }
+  .table-hover tbody tr:hover {
+    background-color: #f8f9fa;
+  }
+  .text-success strong { color: #198754; }
+  .text-warning strong { color: #ffc107; }
+  .text-danger strong { color: #dc3545; }
+</style>
+{% endblock %}
