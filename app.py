@@ -42,10 +42,31 @@ def login_required(f):
         return f(*args, **kwargs)
     return wrapper
 
-# ---------------------------
-# MODELOS
-# ---------------------------
+# ==============================================================
+# 🏦 MODELO DE PRÉSTAMO
+# ==============================================================
+class Prestamo(db.Model):
+    __tablename__ = "prestamo"
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey("cliente.id"), nullable=False)
+    monto = db.Column(db.Float, nullable=False)
+    saldo = db.Column(db.Float, nullable=False)
+    interes = db.Column(db.Float, default=0.0)
+    plazo = db.Column(db.Integer)
+    fecha = db.Column(db.Date, default=date.today)
+    entregado = db.Column(db.Boolean, default=True)
+    frecuencia = db.Column(db.String(20), default="diario")  # diario / semanal / quincenal / mensual
+
+    abonos = db.relationship("Abono", backref="prestamo", lazy=True)
+
+
+# ==============================================================
+# 👤 MODELO DE CLIENTE
+# ==============================================================
 class Cliente(db.Model):
+    __tablename__ = "cliente"
+
     id = db.Column(db.Integer, primary_key=True)
     codigo = db.Column(db.String(50), unique=True, nullable=False)
     nombre = db.Column(db.String(200), nullable=False)
@@ -55,73 +76,110 @@ class Cliente(db.Model):
     fecha_creacion = db.Column(db.Date, default=date.today)
     cancelado = db.Column(db.Boolean, default=False)
     saldo = db.Column(db.Float, default=0.0)
+
     prestamos = db.relationship("Prestamo", backref="cliente", lazy=True)
 
-    # ✅ Saldo total basado en el préstamo activo o más reciente
+    # ---------------------------------------------------------
+    # 🔹 FUNCIONES DE CÁLCULO Y ESTADO
+    # ---------------------------------------------------------
     def saldo_total(self):
         if not self.prestamos:
             return float(self.saldo or 0.0)
         ultimo = max(self.prestamos, key=lambda p: p.fecha)
         return float(ultimo.saldo or 0.0)
 
-    # ✅ Capital total (solo del préstamo actual, no todos los antiguos)
     def capital_total(self):
         if not self.prestamos:
             return 0.0
         ultimo = max(self.prestamos, key=lambda p: p.fecha)
         return float(ultimo.monto or 0.0)
 
+    def capital_total_sin_interes(self):
+        if not self.prestamos:
+            return 0.0
+        ultimo = max(self.prestamos, key=lambda p: p.fecha)
+        return float(ultimo.monto or 0.0)
 
-class Prestamo(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    cliente_id = db.Column(db.Integer, db.ForeignKey("cliente.id"), nullable=False)
-    monto = db.Column(db.Float, nullable=False)
-    saldo = db.Column(db.Float, nullable=False)
-    interes = db.Column(db.Float, default=0.0)
-    plazo = db.Column(db.Integer)
-    fecha = db.Column(db.Date, default=date.today)
-    entregado = db.Column(db.Boolean, default=True)
+    def cuota_total(self):
+        if not self.prestamos:
+            return 0.0
+        ultimo = max(self.prestamos, key=lambda p: p.fecha)
+        if not ultimo.plazo or ultimo.plazo == 0:
+            return 0.0
+        saldo_con_interes = ultimo.monto + (ultimo.monto * (ultimo.interes or 0) / 100)
+        return round(saldo_con_interes / ultimo.plazo, 2)
 
+    def valor_cuota(self):
+        return self.cuota_total()
+
+    def cuotas_atrasadas(self):
+        if not self.prestamos:
+            return 0
+        ultimo = max(self.prestamos, key=lambda p: p.fecha)
+        if not ultimo.plazo:
+            return 0
+        dias_pasados = (date.today() - ultimo.fecha).days
+        frecuencia = getattr(ultimo, "frecuencia", "diario")
+        if frecuencia == "semanal":
+            return dias_pasados // 7
+        elif frecuencia == "quincenal":
+            return dias_pasados // 15
+        elif frecuencia == "mensual":
+            return dias_pasados // 30
+        else:
+            return dias_pasados
+
+    def ultimo_abono_monto(self):
+        if not self.prestamos:
+            return 0.0
+        ultimo_prestamo = max(self.prestamos, key=lambda p: p.fecha)
+        if not ultimo_prestamo.abonos:
+            return 0.0
+        ultimo_abono = max(ultimo_prestamo.abonos, key=lambda a: a.fecha)
+        return float(ultimo_abono.monto or 0.0)
+
+
+# ==============================================================
+# 💵 MODELO DE ABONO
+# ==============================================================
 class Abono(db.Model):
+    __tablename__ = "abono"
+
     id = db.Column(db.Integer, primary_key=True)
     prestamo_id = db.Column(db.Integer, db.ForeignKey("prestamo.id"), nullable=False)
     monto = db.Column(db.Float, nullable=False)
     fecha = db.Column(db.DateTime, default=datetime.now)
-    prestamo = db.relationship("Prestamo", backref=db.backref("abonos", lazy=True))
 
+
+# ==============================================================
+# 📦 MODELO DE MOVIMIENTO DE CAJA
+# ==============================================================
 class MovimientoCaja(db.Model):
+    __tablename__ = "movimiento_caja"
+
     id = db.Column(db.Integer, primary_key=True)
     tipo = db.Column(db.String(20), nullable=False)
     monto = db.Column(db.Float, nullable=False)
     descripcion = db.Column(db.String(255))
     fecha = db.Column(db.DateTime, default=datetime.now)
 
+
+# ==============================================================
+# 📅 MODELO DE LIQUIDACIÓN
+# ==============================================================
 class Liquidacion(db.Model):
+    __tablename__ = "liquidacion"
+
     id = db.Column(db.Integer, primary_key=True)
     fecha = db.Column(db.Date, unique=True, nullable=False)
-
-    # 💰 Ingresos = abonos de clientes
     entradas = db.Column(db.Float, default=0.0)
-
-    # 💵 Entradas manuales (efectivo directo)
-    entradas_caja = db.Column(db.Float, default=0.0)  # ✅ NUEVO CAMPO
-
-    # 💸 Salidas manuales
+    entradas_caja = db.Column(db.Float, default=0.0)
     salidas = db.Column(db.Float, default=0.0)
-
-    # 🧾 Gastos registrados
     gastos = db.Column(db.Float, default=0.0)
-
-    # 💼 Caja final del día
     caja = db.Column(db.Float, default=0.0)
-
-    # 📦 Caja anterior (manual o calculada)
     caja_manual = db.Column(db.Float, default=0.0)
-
-    # 🏦 Préstamos entregados en el día
     prestamos_hoy = db.Column(db.Float, default=0.0)
 
-    # --- PROPIEDADES CALCULADAS ---
     @property
     def total_abonos(self):
         return self.entradas or 0.0
@@ -146,12 +204,13 @@ class Liquidacion(db.Model):
     def total_caja(self):
         return self.caja or 0.0
 
+
 # ---------------------------
 # FUNCIONES AUXILIARES
 # ---------------------------
 import random
-from app import Cliente
 
+# ✅ Genera un código único de 6 dígitos para un cliente
 def generar_codigo_cliente():
     """Genera un código numérico único de 6 dígitos para un cliente."""
     while True:
@@ -159,17 +218,14 @@ def generar_codigo_cliente():
         existe = Cliente.query.filter_by(codigo=codigo).first()
         if not existe:
             return codigo
+
+# ✅ Devuelve rango de un día completo (inicio y fin)
 def day_range(fecha: date):
     start = datetime.combine(fecha, time.min)
     end = start + timedelta(days=1)
     return start, end
 
-def generar_codigo_cliente():
-    code = ''.join(random.choices('0123456789', k=6))
-    while Cliente.query.filter_by(codigo=code).first():
-        code = ''.join(random.choices('0123456789', k=6))
-    return code
-
+# ✅ Crea una liquidación si no existe para la fecha indicada
 def crear_liquidacion_para_fecha(fecha):
     liq = Liquidacion.query.filter_by(fecha=fecha).first()
     if not liq:
@@ -178,18 +234,24 @@ def crear_liquidacion_para_fecha(fecha):
         db.session.commit()
     return liq
 
+# ✅ Obtiene el resumen total general (caja + cartera)
 def obtener_resumen_total():
     total_entradas = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0))\
         .filter(MovimientoCaja.tipo == 'entrada').scalar() or 0.0
+
     total_salidas = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0))\
         .filter(MovimientoCaja.tipo == 'salida').scalar() or 0.0
+
     total_gastos = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0))\
         .filter(MovimientoCaja.tipo == 'gasto').scalar() or 0.0
 
     caja_total = total_entradas - total_salidas - total_gastos
     cartera_total = float(db.session.query(func.coalesce(func.sum(Prestamo.saldo), 0)).scalar() or 0.0)
-    return {'caja_total': caja_total, 'cartera_total': cartera_total}
 
+    return {
+        'caja_total': caja_total,
+        'cartera_total': cartera_total
+    }
 def actualizar_liquidacion_por_movimiento(fecha: date):
     start, end = day_range(fecha)
 
@@ -853,7 +915,6 @@ def movimientos_por_dia(tipo, fecha):
 
     # 💰 Abonos (ingresos de clientes)
     elif tipo == 'abono':
-        from app import Abono, Prestamo, Cliente
         movimientos = (
             Abono.query
             .join(Prestamo, Abono.prestamo_id == Prestamo.id)
@@ -885,7 +946,7 @@ def movimientos_por_dia(tipo, fecha):
         flash('Tipo de movimiento no válido.', 'danger')
         return redirect(url_for('liquidacion'))
 
-    # ✅ CORRECCIÓN: agregamos 'hoy'
+    # ✅ Render con contexto completo
     return render_template(
         'movimientos_por_dia.html',
         movimientos=movimientos,
@@ -893,7 +954,7 @@ def movimientos_por_dia(tipo, fecha):
         fecha=fecha_obj,
         total=total,
         titulo=titulo,
-        hoy=date.today()  # 👈 Esta línea soluciona el error
+        hoy=date.today()  # 👈 Para el template
     )
 
 
@@ -977,7 +1038,6 @@ def actualizar_orden(cliente_id):
 # ---------------------------
 # CRUD CLIENTE
 # ---------------------------
-
 @app.route('/nuevo_cliente', methods=['GET', 'POST'])
 @login_required
 def nuevo_cliente():
@@ -1019,7 +1079,7 @@ def nuevo_cliente():
                 )
                 db.session.add(nuevo_prestamo)
 
-                # 🔹 Importante: registrar como PRÉSTAMO (no como salida)
+                # 🔹 Registrar como PRÉSTAMO (no salida)
                 mov = MovimientoCaja(
                     tipo='prestamo',
                     monto=monto,
@@ -1028,13 +1088,15 @@ def nuevo_cliente():
                 )
                 db.session.add(mov)
 
-                # Actualizar saldo del cliente SOLO con este préstamo actual
+                # Actualizar saldo del cliente
                 cliente_existente.saldo = saldo_total
 
             db.session.commit()
             actualizar_liquidacion_por_movimiento(date.today())
             flash(f"Cliente {cliente_existente.nombre} reactivado correctamente.", "success")
-            return redirect(url_for('nuevo_cliente'))
+
+            # 👇 Redirigir al cliente reactivado
+            return redirect(url_for('index', resaltado=cliente_existente.id))
 
         # 👉 Caso 2: el código ya existe y NO está cancelado → no crear otro cliente
         if cliente_existente and not cliente_existente.cancelado:
@@ -1066,7 +1128,7 @@ def nuevo_cliente():
             )
             db.session.add(nuevo_prestamo)
 
-            # 🔹 Importante: registrar como PRÉSTAMO (no como salida)
+            # 🔹 Registrar como PRÉSTAMO (no salida)
             mov = MovimientoCaja(
                 tipo='prestamo',
                 monto=monto,
@@ -1082,11 +1144,15 @@ def nuevo_cliente():
             actualizar_liquidacion_por_movimiento(date.today())
 
         flash(f"Cliente {nombre or codigo} creado correctamente.", "success")
-        return redirect(url_for('nuevo_cliente'))
+
+        # 👇 Redirigir al listado principal y resaltar el nuevo cliente
+        return redirect(url_for('index', resaltado=cliente.id))
 
     # Sugerir un código para el formulario
     codigo_sugerido = generar_codigo_cliente()
     return render_template("nuevo_cliente.html", codigo_sugerido=codigo_sugerido)
+
+
 
 @app.route('/eliminar_cliente/<int:cliente_id>', methods=['POST'])
 @login_required
