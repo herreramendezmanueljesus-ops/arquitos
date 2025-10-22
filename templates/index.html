@@ -7,10 +7,10 @@
 
 <!-- =================== BOTONES PRINCIPALES =================== -->
 <div class="mb-3 d-flex flex-wrap gap-2">
-  <a class="btn btn-primary" href="{{ url_for('rutas.nuevo_cliente') }}">➕ Nuevo Cliente</a>
-  <a class="btn btn-secondary" href="{{ url_for('rutas.liquidacion_view') }}">📊 Ver Liquidación</a>
-  <a class="btn btn-outline-dark" href="{{ url_for('rutas.clientes_cancelados_view') }}">🚫 Cancelados</a>
-  <a class="btn btn-outline-primary" href="{{ url_for('rutas.dashboard') }}">📈 Dashboard</a>
+  <a class="btn btn-primary" href="{{ url_for('app_rutas.nuevo_cliente') }}">➕ Nuevo Cliente</a>
+  <a class="btn btn-secondary" href="{{ url_for('app_rutas.liquidacion_view') }}">📊 Ver Liquidación</a>
+  <a class="btn btn-outline-dark" href="{{ url_for('app_rutas.clientes_cancelados_view') }}">🚫 Cancelados</a>
+  <a class="btn btn-outline-primary" href="{{ url_for('app_rutas.dashboard') }}">📈 Dashboard</a>
 </div>
 
 <!-- =================== TABLA DE CLIENTES =================== -->
@@ -39,7 +39,7 @@
 
       <!-- ORDEN -->
       <td style="width:100px;">
-        <form action="{{ url_for('rutas.actualizar_orden', cliente_id=c.id) }}" method="post" class="d-flex actualizar-orden-form">
+        <form action="{{ url_for('app_rutas.actualizar_orden', cliente_id=c.id) }}" method="post" class="d-flex actualizar-orden-form">
           <input type="number" name="orden" value="{{ c.orden }}" class="form-control text-center" style="width:70px;" {% if c.cancelado %}disabled{% endif %}>
           <button type="submit" class="btn btn-outline-primary ms-1 btn-sm" {% if c.cancelado %}disabled{% endif %}>✔</button>
         </form>
@@ -73,7 +73,7 @@
       <!-- ABONAR -->
       <td class="abono-td">
         {% if not c.cancelado %}
-        <form action="{{ url_for('rutas.registrar_abono_por_codigo') }}" 
+        <form action="{{ url_for('app_rutas.registrar_abono_por_codigo') }}" 
               method="post" 
               class="d-flex justify-content-center form-abono"
               data-orden="{{ c.orden }}">
@@ -111,7 +111,7 @@
 
       <!-- ELIMINAR -->
       <td>
-        <form action="{{ url_for('rutas.eliminar_cliente', cliente_id=c.id) }}" method="post"
+        <form action="{{ url_for('app_rutas.eliminar_cliente', cliente_id=c.id) }}" method="post"
               onsubmit="return confirm('¿Seguro que deseas eliminar este cliente?');">
           <button type="submit" class="btn btn-danger btn-sm">❌</button>
         </form>
@@ -241,30 +241,66 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // --- Registrar abonos en vivo ---
-  const forms = document.querySelectorAll(".form-abono");
-  forms.forEach(form => {
-    form.addEventListener("submit", async e => {
-      e.preventDefault();
-      const input = form.querySelector("input[name='monto']");
-      const formData = new FormData(form);
-      try {
-        const res = await fetch(form.action, { method: "POST", body: formData, headers: { "X-Requested-With": "fetch" } });
-        const data = await res.json();
-        if (!res.ok || !data.ok) { playSound(false); alert(data.error || "❌ Error."); return; }
-        playSound(true);
-        input.value = "";
-        input.classList.add("bg-success","text-white");
-        const saldoElem = document.querySelector(`.saldo-texto[data-cliente-id="${data.cliente_id}"]`);
-        if (saldoElem) {
-          saldoElem.textContent = data.saldo.toFixed(2);
-          saldoElem.style.transition = "background-color 0.6s";
-          saldoElem.style.backgroundColor = "rgba(0,255,0,0.2)";
-          setTimeout(() => saldoElem.style.backgroundColor = "", 800);
-        }
-      } catch (err) { playSound(false); alert("Error al conectar."); }
-    });
-  });
+const forms = document.querySelectorAll(".form-abono");
+forms.forEach(form => {
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const input = form.querySelector("input[name='monto']");
+    const formData = new FormData(form);
 
+    try {
+      const res = await fetch(form.action, {
+        method: "POST",
+        body: formData,
+        headers: { "X-Requested-With": "fetch" } // 👈 importante
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        playSound(false);
+        alert(data.error || "❌ Error al registrar abono.");
+        return;
+      }
+
+      playSound(true);
+      input.value = "";
+      input.classList.add("bg-success", "text-white");
+
+      const saldoElem = document.querySelector(`.saldo-texto[data-cliente-id="${data.cliente_id}"]`);
+      const fila = document.getElementById(`cliente-${data.cliente_id}`);
+
+      if (data.cancelado) {
+        // 💥 Si quedó cancelado, animar y eliminar fila
+        if (fila) {
+          fila.classList.add("table-danger");
+          fila.style.transition = "opacity 0.8s ease";
+          fila.style.opacity = "0";
+          setTimeout(() => fila.remove(), 800);
+        }
+
+        // ✅ Mostrar toast visual
+        const toast = document.createElement("div");
+        toast.className = "alert alert-info position-fixed top-0 start-50 translate-middle-x mt-3 shadow";
+        toast.style.zIndex = 2000;
+        toast.textContent = `✅ ${data.cliente_nombre || "Cliente"} quedó en saldo 0 y fue movido a cancelados.`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+
+      } else if (saldoElem) {
+        // 🧮 Actualizar saldo normal
+        saldoElem.textContent = data.saldo.toFixed(2);
+        saldoElem.style.transition = "background-color 0.6s";
+        saldoElem.style.backgroundColor = "rgba(0,255,0,0.2)";
+        setTimeout(() => saldoElem.style.backgroundColor = "", 800);
+      }
+
+    } catch (err) {
+      playSound(false);
+      alert("❌ Error al conectar con el servidor.");
+      console.error(err);
+    }
+  });
+});
   // --- Historial de abonos ---
   document.querySelectorAll(".saldo-clickable").forEach(btn => {
     btn.addEventListener("click", async () => {

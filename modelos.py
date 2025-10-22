@@ -22,21 +22,18 @@ class Cliente(db.Model):
     saldo = db.Column(db.Float, default=0.0)
     ultimo_abono_fecha = db.Column(db.Date)
 
-    # 🔗 Relación con préstamos
     prestamos = db.relationship("Prestamo", backref="cliente", lazy=True)
 
     # ---------------------------------------------------
     # 🔹 FUNCIONES DE CÁLCULO Y ESTADO
     # ---------------------------------------------------
     def saldo_total(self):
-        """Saldo total basado en el préstamo más reciente."""
         if not self.prestamos:
             return float(self.saldo or 0.0)
         ultimo = max(self.prestamos, key=lambda p: p.fecha)
         return float(ultimo.saldo or 0.0)
 
     def capital_total(self):
-        """Capital total con interés (para referencia o cálculos internos)."""
         if not self.prestamos:
             return 0.0
         u = max(self.prestamos, key=lambda p: p.fecha)
@@ -44,17 +41,12 @@ class Cliente(db.Model):
         return float(total)
 
     def capital_total_sin_interes(self):
-        """Monto base (venta) del préstamo más reciente."""
         if not self.prestamos:
             return float(self.saldo or 0.0)
         u = max(self.prestamos, key=lambda p: p.fecha)
         return float(u.monto or 0.0)
 
-    # ---------------------------------------------------
-    # 💰 Cálculo de cuotas y plazos
-    # ---------------------------------------------------
     def cuota_total(self):
-        """Calcula el monto de la cuota según frecuencia y plazo."""
         if not self.prestamos:
             return 0.0
 
@@ -75,11 +67,9 @@ class Cliente(db.Model):
         return round(total_con_interes / numero_cuotas, 2)
 
     def valor_cuota(self):
-        """Alias para plantilla HTML."""
         return self.cuota_total()
 
     def cuotas_atrasadas(self):
-        """Calcula cuántas cuotas deberían haberse pagado hasta hoy."""
         if not self.prestamos:
             return 0
 
@@ -105,7 +95,6 @@ class Cliente(db.Model):
         return min(cuotas, u.plazo)
 
     def ultimo_abono_monto(self):
-        """Devuelve el monto del último abono registrado."""
         if not self.prestamos:
             return 0.0
 
@@ -132,8 +121,13 @@ class Prestamo(db.Model):
     saldo = db.Column(db.Float, default=0.0)
     frecuencia = db.Column(db.String(20), default="diario")
 
-    # 🔗 Relación con abonos
-    abonos = db.relationship("Abono", backref="prestamo", lazy=True)
+    # ✅ Relación corregida: elimina abonos al borrar préstamo
+    abonos = db.relationship(
+        "Abono",
+        backref="prestamo",
+        cascade="all, delete-orphan",
+        lazy=True
+    )
 
 
 # ---------------------------------------------------
@@ -145,7 +139,7 @@ class Abono(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     prestamo_id = db.Column(db.Integer, db.ForeignKey("prestamo.id"), nullable=False)
     monto = db.Column(db.Float, nullable=False)
-    fecha = db.Column(db.DateTime, default=hora_actual)  # ✅ Hora real de Chile
+    fecha = db.Column(db.DateTime(timezone=False), default=hora_actual)  # ✅ Hora real de Chile sin tzinfo
 
 
 # ---------------------------------------------------
@@ -158,7 +152,7 @@ class MovimientoCaja(db.Model):
     tipo = db.Column(db.String(20), nullable=False)
     monto = db.Column(db.Float, nullable=False)
     descripcion = db.Column(db.String(255))
-    fecha = db.Column(db.DateTime, default=hora_actual)  # ✅ Hora real de Chile
+    fecha = db.Column(db.DateTime(timezone=False), default=hora_actual)  # ✅ Igual que Deicton
 
 
 # ---------------------------------------------------

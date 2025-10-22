@@ -1,85 +1,175 @@
 {% extends "base.html" %}
-{% block title %}🚫 Clientes Cancelados{% endblock %}
+{% block title %}📋 Clientes Cancelados{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-  <!-- 🧭 Encabezado -->
-  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
-    <h2 class="m-0">🚫 Clientes Cancelados</h2>
-    <a href="{{ url_for('rutas.index') }}" class="btn btn-outline-secondary btn-sm">⬅️ Volver al Listado</a>
+  <h2 class="text-center mb-4">📋 Clientes Cancelados</h2>
+
+  <div class="table-responsive">
+    <table class="table table-bordered table-hover align-middle text-center">
+      <thead class="table-dark">
+        <tr>
+          <th>Orden</th>
+          <th>Código</th>
+          <th>Días</th>
+          <th>Fecha salida</th>
+          <th>Nombre</th>
+          <th>Salida</th>
+          <th>Último abono</th>
+          <th>Abonar</th>
+          <th>Saldo</th>
+        </tr>
+      </thead>
+      <tbody id="tabla-cancelados">
+        {% for c in clientes %}
+        <tr id="cliente-{{ c.id }}">
+          <td>{{ c.orden or loop.index }}</td>
+          <td>{{ c.codigo }}</td>
+          <td>{{ c.dias }}</td>
+          <td>{{ c.fecha_salida }}</td>
+          <td>{{ c.nombre }}</td>
+          <td>${{ "%.2f"|format(c.salida_total) }}</td>
+          <td>
+            {% if c.ultimo_abono_monto and c.ultimo_abono_monto > 0 %}
+              ${{ "%.2f"|format(c.ultimo_abono_monto) }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="abono-td">
+            <form class="d-flex justify-content-center form-abono-cancelado" data-id="{{ c.id }}">
+              <input type="number"
+                     step="0.01"
+                     min="0.01"
+                     placeholder="0"
+                     class="form-control text-end abono-input fw-bold"
+                     style="width:120px; height:50px; font-size:1.4rem;"
+                     required autocomplete="off">
+              <button type="submit"
+                      class="btn btn-success ms-2"
+                      style="font-size:1.4rem; padding:0 15px;">💵</button>
+            </form>
+          </td>
+          <td>
+            <span class="saldo-link text-primary fw-bold"
+                  data-id="{{ c.id }}"
+                  style="cursor: pointer;">
+              ${{ "%.2f"|format(c.saldo or 0.0) }}
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 
-  {% if clientes %}
-  <!-- 📋 Tabla de clientes cancelados -->
-  <table class="table table-bordered table-hover align-middle text-center shadow-sm">
-    <thead class="table-dark">
-      <tr>
-        <th>📄 Código</th>
-        <th>👤 Nombre</th>
-        <th>📍 Dirección</th>
-        <th>📞 Teléfono</th>
-        <th>📅 Fecha Creación</th>
-        <th>💰 Saldo Total</th>
-        <th>♻️ Reactivar</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for c in clientes %}
-      <tr>
-        <td>{{ c.codigo }}</td>
-        <td>{{ c.nombre }}</td>
-        <td>{{ c.direccion or "—" }}</td>
-        <td>{{ c.telefono or "—" }}</td>
-        <td>{{ c.fecha_creacion.strftime("%d/%m/%Y") }}</td>
-        <td class="fw-bold text-danger">
-          ${{ "%.2f"|format(c.saldo_total()) }}
-        </td>
-        <td>
-          <form action="{{ url_for('rutas.reactivar_cliente', cliente_id=c.id) }}" method="post"
-                onsubmit="return confirm('¿Deseas reactivar este cliente?');">
-            <button type="submit" class="btn btn-success btn-sm">🔄 Reactivar</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-      <tr class="table-light">
-        <td colspan="5" class="fw-bold text-end">📊 Totales:</td>
-        <td class="fw-bold text-danger">
-          ${{ "%.2f"|format(total_saldos or 0) }}
-        </td>
-        <td class="fw-bold text-secondary">
-          {{ total_cancelados }} clientes
-        </td>
-      </tr>
-    </tbody>
-  </table>
-
-  <!-- 🕒 Hora actual -->
-  <div class="text-end text-muted mt-3">
-    🕒 Hora actual: {{ hora_actual() }}
-  </div>
-
-  {% else %}
-  <!-- 🚫 Sin registros -->
-  <div class="alert alert-info text-center shadow-sm">
-    ⚠️ No hay clientes cancelados actualmente.
+  {% if not clientes %}
+  <div class="alert alert-info text-center mt-4">
+    No hay clientes cancelados actualmente.
   </div>
   {% endif %}
 </div>
 
-<!-- 🎨 Estilos adicionales -->
+<!-- 🧾 Modal para mostrar abonos -->
+<div class="modal fade" id="modalAbonos" tabindex="-1" aria-labelledby="modalAbonosLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-dark text-white">
+        <h5 class="modal-title" id="modalAbonosLabel">Historial de Abonos</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="tablaAbonos"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ⚙️ Script de eventos -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  // 📘 Mostrar historial de abonos
+  document.querySelectorAll(".saldo-link").forEach((el) => {
+    el.addEventListener("click", async () => {
+      const id = el.dataset.id;
+      const modalBody = document.getElementById("tablaAbonos");
+      modalBody.innerHTML = "<p class='text-center'>Cargando abonos...</p>";
+
+      try {
+        const resp = await fetch(`/historial_abonos/${id}`);
+        const data = await resp.text();
+        modalBody.innerHTML = data;
+        new bootstrap.Modal(document.getElementById("modalAbonos")).show();
+      } catch {
+        modalBody.innerHTML = "<p class='text-danger text-center'>Error al cargar los abonos.</p>";
+      }
+    });
+  });
+
+  // 💵 Reactivar cliente (sin recargar página)
+  document.querySelectorAll(".form-abono-cancelado").forEach((form) => {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const input = form.querySelector(".abono-input");
+      const id = form.dataset.id;
+      const valor = parseFloat(input.value || 0);
+      if (valor <= 0) return;
+
+      input.disabled = true;
+      form.querySelector("button").disabled = true;
+      input.classList.add("bg-warning");
+
+      try {
+        const resp = await fetch(`/reactivar_cliente/${id}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Requested-With": "fetch" // 👈 línea crucial para AJAX
+          },
+          body: new URLSearchParams({ abono: valor }),
+        });
+
+        const data = await resp.json();
+
+        if (data.ok) {
+          // 💫 Animar y eliminar fila
+          const fila = document.getElementById(`cliente-${id}`);
+          fila.classList.add("table-success");
+          fila.style.transition = "opacity 0.8s ease";
+          fila.style.opacity = "0";
+          setTimeout(() => fila.remove(), 800);
+
+          // ✅ Toast visual
+          const toast = document.createElement("div");
+          toast.className = "alert alert-success position-fixed top-0 start-50 translate-middle-x mt-3 shadow";
+          toast.style.zIndex = 2000;
+          toast.textContent = `✅ ${data.nombre} reactivado con abono $${valor.toFixed(2)}.`;
+          document.body.appendChild(toast);
+          setTimeout(() => toast.remove(), 4000);
+
+          // 📡 (Opcional) Enviar datos al index si está abierto
+          if (window.opener) {
+            window.opener.postMessage({ tipo: "nuevo_cliente", cliente: data }, "*");
+          }
+        } else {
+          alert("❌ " + (data.error || "Error al reactivar cliente."));
+        }
+      } catch (err) {
+        alert("❌ Error al conectar con el servidor.");
+        console.error("⚠️ Error detallado:", err);
+      } finally {
+        input.disabled = false;
+        form.querySelector("button").disabled = false;
+        input.classList.remove("bg-warning");
+        input.value = "";
+      }
+    });
+  });
+});
+</script>
+
 <style>
-  .table td, .table th {
-    vertical-align: middle;
-  }
-  .btn-outline-secondary {
-    border-radius: 8px;
-  }
-  .shadow-sm {
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  }
-  .fw-bold.text-danger {
-    color: #dc3545 !important;
-  }
+.abono-td form { align-items: center; justify-content: center; gap: 0.3em; }
+.table-success { background-color: #d1e7dd !important; transition: all 0.6s ease; }
 </style>
 {% endblock %}

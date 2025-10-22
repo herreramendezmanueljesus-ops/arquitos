@@ -10,8 +10,8 @@
     <p class="text-muted">Resumen financiero de movimientos, caja y préstamos</p>
 
     <div class="d-flex justify-content-center gap-2 flex-wrap">
-      <a href="{{ url_for('rutas.liquidaciones') }}" class="btn btn-outline-secondary btn-sm">📜 Ver Historial</a>
-      <a id="btn-reparar-caja" href="{{ url_for('rutas.reparar_caja') }}" 
+      <a href="{{ url_for('app_rutas.liquidaciones') }}" class="btn btn-outline-secondary btn-sm">📜 Ver Historial</a>
+      <a id="btn-reparar-caja" href="{{ url_for('app_rutas.reparar_caja') }}" 
          class="btn btn-outline-danger btn-sm d-none">🧹 Reparar Caja</a>
     </div>
   </div>
@@ -23,7 +23,7 @@
       <div class="card border-success shadow-sm">
         <div class="card-body text-center">
           <h6 class="text-success fw-bold mb-3">💰 Entrada de Efectivo</h6>
-          <form action="{{ url_for('rutas.caja_movimiento', tipo='entrada_manual') }}" method="POST">
+          <form action="{{ url_for('app_rutas.caja_movimiento', tipo='entrada_manual') }}" method="POST">
             <input type="number" name="monto" step="0.01" placeholder="Monto" class="form-control form-control-sm mb-2" required>
             <input type="text" name="descripcion" placeholder="Descripción (opcional)" class="form-control form-control-sm mb-3">
             <button type="submit" class="btn btn-success btn-sm w-100">Registrar Entrada</button>
@@ -37,7 +37,7 @@
       <div class="card border-warning shadow-sm">
         <div class="card-body text-center">
           <h6 class="text-warning fw-bold mb-3">💸 Salida de Efectivo</h6>
-          <form action="{{ url_for('rutas.caja_movimiento', tipo='salida') }}" method="POST">
+          <form action="{{ url_for('app_rutas.caja_movimiento', tipo='salida') }}" method="POST">
             <input type="number" name="monto" step="0.01" placeholder="Monto" class="form-control form-control-sm mb-2" required>
             <input type="text" name="descripcion" placeholder="Descripción (opcional)" class="form-control form-control-sm mb-3">
             <button type="submit" class="btn btn-warning btn-sm w-100 text-dark">Registrar Salida</button>
@@ -51,7 +51,7 @@
       <div class="card border-danger shadow-sm">
         <div class="card-body text-center">
           <h6 class="text-danger fw-bold mb-3">🧾 Registrar Gasto</h6>
-          <form action="{{ url_for('rutas.caja_movimiento', tipo='gasto') }}" method="POST">
+          <form action="{{ url_for('app_rutas.caja_movimiento', tipo='gasto') }}" method="POST">
             <input type="number" name="monto" step="0.01" placeholder="Monto" class="form-control form-control-sm mb-2" required>
             <input type="text" name="descripcion" placeholder="Descripción (opcional)" class="form-control form-control-sm mb-3">
             <button type="submit" class="btn btn-danger btn-sm w-100">Registrar Gasto</button>
@@ -100,11 +100,11 @@
           <tr>
             <td>{{ l.fecha.strftime("%d/%m/%Y") }}</td>
             <td>${{ "%.2f"|format(l.caja_manual or 0) }}</td>
-            <td><a href="{{ url_for('rutas.movimientos_por_dia', tipo='abono', fecha=l.fecha.strftime('%Y-%m-%d')) }}" class="text-success fw-bold">$ {{ "%.2f"|format(l.entradas or 0) }}</a></td>
-            <td><a href="{{ url_for('rutas.movimientos_por_dia', tipo='entrada_manual', fecha=l.fecha.strftime('%Y-%m-%d')) }}" class="text-info fw-bold">$ {{ "%.2f"|format(l.entradas_caja or 0) }}</a></td>
-            <td><a href="{{ url_for('rutas.prestamos_por_dia', fecha=l.fecha.strftime('%Y-%m-%d')) }}" class="text-primary fw-bold">$ {{ "%.2f"|format(l.prestamos_hoy or 0) }}</a></td>
-            <td><a href="{{ url_for('rutas.movimientos_por_dia', tipo='salida', fecha=l.fecha.strftime('%Y-%m-%d')) }}" class="text-warning fw-bold">$ {{ "%.2f"|format(l.salidas or 0) }}</a></td>
-            <td><a href="{{ url_for('rutas.movimientos_por_dia', tipo='gasto', fecha=l.fecha.strftime('%Y-%m-%d')) }}" class="text-danger fw-bold">$ {{ "%.2f"|format(l.gastos or 0) }}</a></td>
+            <td><a href="{{ url_for('app_rutas.movimientos_por_dia', tipo='abono', fecha=l.fecha.strftime('%Y-%m-%d')) }}" class="text-success fw-bold">$ {{ "%.2f"|format(l.entradas or 0) }}</a></td>
+            <td><a href="{{ url_for('app_rutas.movimientos_por_dia', tipo='entrada_manual', fecha=l.fecha.strftime('%Y-%m-%d')) }}" class="text-info fw-bold">$ {{ "%.2f"|format(l.entradas_caja or 0) }}</a></td>
+            <td><a href="{{ url_for('app_rutas.prestamos_por_dia', fecha=l.fecha.strftime('%Y-%m-%d')) }}" class="text-primary fw-bold">$ {{ "%.2f"|format(l.prestamos_hoy or 0) }}</a></td>
+            <td><a href="{{ url_for('app_rutas.movimientos_por_dia', tipo='salida', fecha=l.fecha.strftime('%Y-%m-%d')) }}" class="text-warning fw-bold">$ {{ "%.2f"|format(l.salidas or 0) }}</a></td>
+            <td><a href="{{ url_for('app_rutas.movimientos_por_dia', tipo='gasto', fecha=l.fecha.strftime('%Y-%m-%d')) }}" class="text-danger fw-bold">$ {{ "%.2f"|format(l.gastos or 0) }}</a></td>
             <td class="{% if (l.caja or 0) >= 0 %}text-success{% else %}text-danger{% endif %} fw-bold">
               ${{ "%.2f"|format(l.caja or 0) }}
             </td>
@@ -127,7 +127,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', async () => {
   try {
-    const res = await fetch('{{ url_for("rutas.revisar_caja_estado") }}');
+    const res = await fetch('{{ url_for("app_rutas.revisar_caja_estado") }}');
     const data = await res.json();
     if (data.errores > 0) {
       const btn = document.getElementById('btn-reparar-caja');

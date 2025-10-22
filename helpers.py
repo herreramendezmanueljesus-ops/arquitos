@@ -233,3 +233,19 @@ def reparar_cliente(nombre: str | int):
 
     print(f"✅ Cliente '{cliente.nombre}' reparado correctamente.")
     print(f"💰 Se devolvieron ${saldo_devuelto:.2f} a la caja.")
+
+# ======================================================
+# 🧭 Función para normalizar hora sin zona (modo local Chile)
+# ======================================================
+def hora_sin_tz(dt=None):
+    """
+    Convierte cualquier datetime a hora chilena sin tzinfo (naive),
+    útil para guardar en BD sin perder la hora real local.
+    """
+    if dt is None:
+        dt = datetime.now(CHILE_TZ)
+    if dt.tzinfo is None:
+        return dt
+    return dt.astimezone(CHILE_TZ).replace(tzinfo=None)
+
+

@@ -1,4 +1,3 @@
-
 # ======================================================
 # app.py — versión FINAL y sincronizada (hora local Chile 🇨🇱)
 # ======================================================
@@ -32,8 +31,8 @@ app.jinja_env.globals.update(hora_chile=hora_chile)
 # 🗄️ Configuración de base de datos (Neon PostgreSQL)
 # ======================================================
 DB_DEFAULT = (
-    "postgresql+psycopg2://neondb_owner:"
-    "npg_cvzpsy7uDj5A@ep-holy-cherry-ad45d0mv-pooler.c-2.us-east-1.aws.neon.tech/"
+    "postgresql://neondb_owner:npg_cvzpsy7uDj5A@"
+    "ep-holy-cherry-ad45d0mv-pooler.c-2.us-east-1.aws.neon.tech/"
     "neondb?sslmode=require&channel_binding=require"
 )
 
@@ -65,8 +64,8 @@ def login_required(f):
 # ======================================================
 # 🔗 Registro de rutas (Blueprint principal)
 # ======================================================
-from rutas import bp as rutas_bp
-app.register_blueprint(rutas_bp)
+from rutas import app_rutas
+app.register_blueprint(app_rutas)
 
 # ======================================================
 # 📦 Inicializar extensiones

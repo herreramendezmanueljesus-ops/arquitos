@@ -6,7 +6,7 @@
   <!-- 🧭 Encabezado -->
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <h2 class="m-0">📋 Abonos del {{ fecha.strftime("%d/%m/%Y") }}</h2>
-    <a href="{{ url_for('rutas.liquidaciones') }}" class="btn btn-outline-primary btn-sm">⬅️ Volver al Historial</a>
+    <a href="{{ url_for('app_rutas.liquidaciones') }}" class="btn btn-outline-primary btn-sm">⬅️ Volver al Historial</a>
   </div>
 
   {% if abonos %}

@@ -1,51 +1,47 @@
-# ======================================================
-# tiempo.py — versión estable Render + Local (Chile 🇨🇱)
-# ======================================================
-
-from datetime import datetime, time, timedelta, date
-from zoneinfo import ZoneInfo
-
-# Zona horaria oficial de Chile continental
-CHILE_TZ = ZoneInfo("America/Santiago")
 
 # ======================================================
-# 🕒 Hora actual
+# tiempo.py — versión final (hora local Chile 🇨🇱)
 # ======================================================
+
+from datetime import datetime, timedelta, time, date
+import pytz
+
+# 🕒 Zona horaria oficial de Chile
+CHILE_TZ = pytz.timezone("America/Santiago")
+
+# ------------------------------------------------------
+# 🔹 Hora actual local sin tzinfo (para base de datos)
+# ------------------------------------------------------
 def hora_actual():
-    """
-    Devuelve la hora actual en la zona horaria de Chile (correcta en Render).
-    """
-    return datetime.now(CHILE_TZ)
+    """Devuelve la hora local de Chile (naive, sin tzinfo)."""
+    ahora_chile = datetime.now(CHILE_TZ)
+    return ahora_chile.replace(tzinfo=None)
 
-# ======================================================
-# 📅 Fecha local
-# ======================================================
+# ------------------------------------------------------
+# 🔹 Fecha local (solo día)
+# ------------------------------------------------------
 def local_date():
-    """Devuelve solo la fecha (YYYY-MM-DD) en hora chilena."""
+    """Devuelve la fecha local de Chile (solo date)."""
     return hora_actual().date()
 
-# ======================================================
-# 📆 Rango de día
-# ======================================================
+# ------------------------------------------------------
+# 🔹 Rango horario del día completo (inicio-fin)
+# ------------------------------------------------------
 def day_range(fecha: date):
-    """Devuelve el rango de inicio y fin del día en hora de Chile."""
-    start = datetime.combine(fecha, time.min, tzinfo=CHILE_TZ)
-    end = start + timedelta(days=1)
-    return start, end
+    """Devuelve el inicio y fin del día completo según hora local de Chile."""
+    inicio = datetime.combine(fecha, time.min)
+    fin = datetime.combine(fecha + timedelta(days=1), time.min)
+    return inicio, fin
 
-# ======================================================
-# 🕓 Conversión segura para mostrar
-# ======================================================
-def to_hora_chile(value):
-    """Convierte datetimes a hora local chilena legible."""
-    if not value:
+# ------------------------------------------------------
+# 🔹 Formatear hora chilena legible
+# ------------------------------------------------------
+def to_hora_chile(dt):
+    """Convierte un datetime a formato legible HH:MM:SS AM/PM (hora Chile)."""
+    if dt is None:
         return ""
-
-    try:
-        if value.tzinfo is None:
-            # Asumimos que viene en UTC si no tiene zona
-            value = value.replace(tzinfo=ZoneInfo("UTC"))
-        local_value = value.astimezone(CHILE_TZ)
-        return local_value.strftime("%d/%m/%Y %H:%M:%S")
-    except Exception:
-        return str(value)
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(CHILE_TZ)
+    else:
+        dt = CHILE_TZ.localize(dt)
+    return dt.strftime("%I:%M:%S %p")
