@@ -1,4 +1,3 @@
-
 {% extends "base.html" %}
 {% block title %}Salidas del {{ fecha.strftime("%d/%m/%Y") }}{% endblock %}
 
@@ -9,6 +8,7 @@
     <div class="card-body text-center">
       <h4 class="card-title mb-2">💸 Salidas del {{ fecha.strftime("%d/%m/%Y") }}</h4>
       <p class="text-muted mb-0">Movimientos de dinero saliente registrados en la fecha seleccionada.</p>
+      <p class="text-muted mt-1">🕒 Hora actual en Chile: {{ hora_chile() }}</p>
     </div>
   </div>
 

@@ -1,13 +1,13 @@
-from datetime import datetime, date
+# ======================================================
+# modelos.py — versión FINAL (Créditos System, hora Chile 🇨🇱)
+# ======================================================
+
 from extensions import db
+from tiempo import hora_actual, local_date  # ✅ Hora y fecha local chilena
 
 # ---------------------------------------------------
 # 🧍‍♂️ CLIENTE
 # ---------------------------------------------------
-from datetime import date
-from extensions import db
-
-
 class Cliente(db.Model):
     __tablename__ = "cliente"
 
@@ -17,7 +17,7 @@ class Cliente(db.Model):
     direccion = db.Column(db.String(255))
     telefono = db.Column(db.String(50))
     orden = db.Column(db.Integer)
-    fecha_creacion = db.Column(db.Date, default=date.today)
+    fecha_creacion = db.Column(db.Date, default=local_date)  # ✅ Fecha local
     cancelado = db.Column(db.Boolean, default=False)
     saldo = db.Column(db.Float, default=0.0)
     ultimo_abono_fecha = db.Column(db.Date)
@@ -28,7 +28,6 @@ class Cliente(db.Model):
     # ---------------------------------------------------
     # 🔹 FUNCIONES DE CÁLCULO Y ESTADO
     # ---------------------------------------------------
-
     def saldo_total(self):
         """Saldo total basado en el préstamo más reciente."""
         if not self.prestamos:
@@ -55,13 +54,7 @@ class Cliente(db.Model):
     # 💰 Cálculo de cuotas y plazos
     # ---------------------------------------------------
     def cuota_total(self):
-        """
-        Calcula el monto de la cuota según la frecuencia y el plazo.
-        Ejemplo:
-            - plazo = 45
-            - frecuencia = 'diario' → 45 cuotas
-            - frecuencia = 'semanal' → 6 cuotas (45 // 7)
-        """
+        """Calcula el monto de la cuota según frecuencia y plazo."""
         if not self.prestamos:
             return 0.0
 
@@ -74,10 +67,9 @@ class Cliente(db.Model):
             "diario": 1,
             "semanal": 7,
             "quincenal": 15,
-            "mensual": 30
+            "mensual": 30,
         }.get(frecuencia, 1)
 
-        # Número de cuotas esperadas
         numero_cuotas = max(1, u.plazo // dias_por_periodo)
         total_con_interes = u.monto + (u.monto * (u.interes or 0) / 100)
         return round(total_con_interes / numero_cuotas, 2)
@@ -87,10 +79,7 @@ class Cliente(db.Model):
         return self.cuota_total()
 
     def cuotas_atrasadas(self):
-        """
-        Calcula cuántas cuotas deberían haberse pagado hasta hoy.
-        Se basa en la frecuencia y la fecha del préstamo.
-        """
+        """Calcula cuántas cuotas deberían haberse pagado hasta hoy."""
         if not self.prestamos:
             return 0
 
@@ -98,7 +87,8 @@ class Cliente(db.Model):
         if not u.plazo or not u.fecha:
             return 0
 
-        dias_pasados = (date.today() - u.fecha).days
+        from tiempo import local_date
+        dias_pasados = (local_date() - u.fecha).days
         frecuencia = (u.frecuencia or "diario").lower()
 
         if frecuencia == "diario":
@@ -112,12 +102,8 @@ class Cliente(db.Model):
         else:
             cuotas = 0
 
-        # Evitar que muestre más de las cuotas totales
         return min(cuotas, u.plazo)
 
-    # ---------------------------------------------------
-    # 💵 Último abono
-    # ---------------------------------------------------
     def ultimo_abono_monto(self):
         """Devuelve el monto del último abono registrado."""
         if not self.prestamos:
@@ -142,7 +128,7 @@ class Prestamo(db.Model):
     monto = db.Column(db.Float, nullable=False)
     interes = db.Column(db.Float, default=0.0)
     plazo = db.Column(db.Integer)
-    fecha = db.Column(db.Date, default=date.today)
+    fecha = db.Column(db.Date, default=local_date)  # ✅ Fecha local de Chile
     saldo = db.Column(db.Float, default=0.0)
     frecuencia = db.Column(db.String(20), default="diario")
 
@@ -159,7 +145,7 @@ class Abono(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     prestamo_id = db.Column(db.Integer, db.ForeignKey("prestamo.id"), nullable=False)
     monto = db.Column(db.Float, nullable=False)
-    fecha = db.Column(db.DateTime, default=datetime.now)
+    fecha = db.Column(db.DateTime, default=hora_actual)  # ✅ Hora real de Chile
 
 
 # ---------------------------------------------------
@@ -169,10 +155,10 @@ class MovimientoCaja(db.Model):
     __tablename__ = "movimiento_caja"
 
     id = db.Column(db.Integer, primary_key=True)
-    tipo = db.Column(db.String(20), nullable=False)  # entrada_manual, salida, gasto, prestamo
+    tipo = db.Column(db.String(20), nullable=False)
     monto = db.Column(db.Float, nullable=False)
     descripcion = db.Column(db.String(255))
-    fecha = db.Column(db.DateTime, default=datetime.now)
+    fecha = db.Column(db.DateTime, default=hora_actual)  # ✅ Hora real de Chile
 
 
 # ---------------------------------------------------

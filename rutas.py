@@ -1,6 +1,8 @@
-# rutas.py
+# ======================================================
+# rutas.py — versión FINAL (Créditos System, hora Chile 🇨🇱)
+# ======================================================
 import os
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta  # ✅ agregado timedelta
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
     flash, session, jsonify
@@ -12,24 +14,27 @@ from extensions import db
 from modelos import Cliente, Prestamo, Abono, MovimientoCaja, Liquidacion
 from helpers import (
     generar_codigo_cliente,
-    day_range,
     crear_liquidacion_para_fecha,
     obtener_resumen_total,
     actualizar_liquidacion_por_movimiento,
 )
 
-# -----------------------------------
-# Blueprint
-# -----------------------------------
+# ⏰ Hora de Chile centralizada
+from tiempo import hora_actual, local_date, day_range, to_hora_chile  # to_hora_chile disponible por si lo usas en templates
+
+# ======================================================
+# ⚙️ CONFIGURACIÓN DEL BLUEPRINT
+# ======================================================
 bp = Blueprint("rutas", __name__)
 
-# -----------------------------------
-# Login / Auth
-# -----------------------------------
+# ======================================================
+# 🔐 LOGIN / AUTENTICACIÓN
+# ======================================================
 VALID_USER = os.getenv("APP_USER", "mjesus40")
 VALID_PASS = os.getenv("APP_PASS", "198409")
 
 def login_required(f):
+    """Protege las rutas que requieren sesión activa."""
     @wraps(f)
     def wrapper(*args, **kwargs):
         if "usuario" not in session:
@@ -38,54 +43,160 @@ def login_required(f):
     return wrapper
 
 
-# ==============================
-# RUTAS PRINCIPALES
-# ==============================
+# ======================================================
+# 📊 DASHBOARD GENERAL — Créditos
+# ======================================================
+@bp.route("/dashboard")
+@login_required
+def dashboard():
+    from datetime import date
+    from tiempo import day_range, local_date
+    from modelos import Abono, Prestamo, MovimientoCaja, Cliente
+    from sqlalchemy import func
+
+    hoy = local_date()
+    start, end = day_range(hoy)
+
+    # 👥 Total de clientes activos
+    total_clientes_activos = db.session.query(func.count(Cliente.id)) \
+        .filter(Cliente.cancelado == False).scalar() or 0
+
+    # 💰 Total abonos del día
+    total_abonos = db.session.query(func.coalesce(func.sum(Abono.monto), 0)) \
+        .filter(Abono.fecha >= start, Abono.fecha < end).scalar() or 0.0
+
+    # 💵 Total préstamos entregados hoy
+    total_prestamos = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0)) \
+        .filter(MovimientoCaja.tipo == "prestamo",
+                MovimientoCaja.fecha >= start,
+                MovimientoCaja.fecha < end).scalar() or 0.0
+
+    # 📥 Entradas manuales (efectivo ingresado)
+    total_entradas = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0)) \
+        .filter(MovimientoCaja.tipo == "entrada_manual",
+                MovimientoCaja.fecha >= start,
+                MovimientoCaja.fecha < end).scalar() or 0.0
+
+    # 📤 Salidas manuales
+    total_salidas = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0)) \
+        .filter(MovimientoCaja.tipo == "salida",
+                MovimientoCaja.fecha >= start,
+                MovimientoCaja.fecha < end).scalar() or 0.0
+
+    # 💸 Gastos
+    total_gastos = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0)) \
+        .filter(MovimientoCaja.tipo == "gasto",
+                MovimientoCaja.fecha >= start,
+                MovimientoCaja.fecha < end).scalar() or 0.0
+
+    # 🧮 Caja total del día
+    caja_total = total_abonos + total_entradas - (total_prestamos + total_salidas + total_gastos)
+
+    # 🧾 Renderizar Dashboard
+    return render_template(
+        "dashboard.html",
+        hoy=hoy,  # ✅ se envía la fecha local
+        total_clientes_activos=total_clientes_activos,
+        total_abonos=total_abonos,
+        total_prestamos=total_prestamos,
+        total_entradas=total_entradas,
+        total_salidas=total_salidas,
+        total_gastos=total_gastos,
+        caja_total=caja_total
+    )
+
+# ======================================================
+# 🏠 RUTA PRINCIPAL — CLIENTES + TARJETA DE RESUMEN (DASHBOARD)
+# ======================================================
 @bp.route("/")
 @login_required
 def index():
-    # ✅ Mostrar solo clientes activos (no cancelados)
+    """Página principal con clientes activos y resumen general."""
+    from sqlalchemy import func
+    from tiempo import day_range, local_date
+
     clientes = (
         Cliente.query.filter_by(cancelado=False)
         .order_by(Cliente.orden.asc().nullsfirst(), Cliente.id.asc())
         .all()
     )
 
-    # 🧮 Mantener orden numérico limpio
+    # 🧮 Mantener orden limpio
     for idx, c in enumerate(clientes, start=1):
         if not c.orden or c.orden != idx:
             c.orden = idx
     db.session.commit()
 
-    # 📆 Calcular estado del plazo (para colores)
-    hoy = date.today()
+    # 📆 Calcular estado del plazo (colores)
+    hoy = local_date()
     for c in clientes:
         estado = "normal"
         if c.prestamos:
-            # Último préstamo del cliente (más reciente)
             ultimo_prestamo = max(c.prestamos, key=lambda p: p.fecha)
             if ultimo_prestamo.plazo:
-                fecha_vencimiento = ultimo_prestamo.fecha + timedelta(days=ultimo_prestamo.plazo)
-                dias_pasados = (hoy - fecha_vencimiento).days
-                # 🟧 Entre 0 y 29 días después del vencimiento → naranja
+                fecha_venc = ultimo_prestamo.fecha + timedelta(days=ultimo_prestamo.plazo)
+                dias_pasados = (hoy - fecha_venc).days
                 if 0 <= dias_pasados < 30:
-                    estado = "vencido"
-                # 🔴 30 días o más → rojo
+                    estado = "vencido"   # 🟧
                 elif dias_pasados >= 30:
-                    estado = "moroso"
-        c.estado_plazo = estado  # Usado en template
+                    estado = "moroso"    # 🔴
+        c.estado_plazo = estado
 
-    # 📊 Resumen general (caja y cartera)
     resumen = obtener_resumen_total()
 
-    return render_template("index.html", clientes=clientes, resumen=resumen, hoy=hoy)
+    # --------------------------------------------------
+    # 📊 Calcular resumen diario tipo "Dashboard"
+    # --------------------------------------------------
+    start, end = day_range(hoy)
 
+    total_abonos = db.session.query(func.coalesce(func.sum(Abono.monto), 0)) \
+        .filter(Abono.fecha >= start, Abono.fecha < end).scalar() or 0.0
+
+    total_prestamos = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0)) \
+        .filter(MovimientoCaja.tipo == "prestamo",
+                MovimientoCaja.fecha >= start,
+                MovimientoCaja.fecha < end).scalar() or 0.0
+
+    total_entradas = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0)) \
+        .filter(MovimientoCaja.tipo == "entrada_manual",
+                MovimientoCaja.fecha >= start,
+                MovimientoCaja.fecha < end).scalar() or 0.0
+
+    total_salidas = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0)) \
+        .filter(MovimientoCaja.tipo == "salida",
+                MovimientoCaja.fecha >= start,
+                MovimientoCaja.fecha < end).scalar() or 0.0
+
+    total_gastos = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0)) \
+        .filter(MovimientoCaja.tipo == "gasto",
+                MovimientoCaja.fecha >= start,
+                MovimientoCaja.fecha < end).scalar() or 0.0
+
+    caja_total = total_abonos + total_entradas - (total_prestamos + total_salidas + total_gastos)
+
+    return render_template(
+        "index.html",
+        clientes=clientes,
+        resumen=resumen,
+        hoy=hoy,
+        total_abonos=total_abonos,
+        total_prestamos=total_prestamos,
+        total_entradas=total_entradas,
+        total_salidas=total_salidas,
+        total_gastos=total_gastos,
+        caja_total=caja_total
+    )
+
+
+# ======================================================
+# ✏️ EDITAR PRÉSTAMO — (GET/POST)
+# ======================================================
 @bp.route("/editar_prestamo/<int:cliente_id>", methods=["GET", "POST"])
 def editar_prestamo(cliente_id):
     cliente = Cliente.query.get_or_404(cliente_id)
     prestamo = max(cliente.prestamos, key=lambda p: p.fecha) if cliente.prestamos else None
 
-    # 📤 --- GET: devolver datos actuales ---
+    # 📤 GET — devolver datos actuales
     if request.method == "GET":
         if not prestamo:
             return jsonify({"ok": False, "error": "El cliente no tiene préstamo activo."})
@@ -99,7 +210,7 @@ def editar_prestamo(cliente_id):
             }
         })
 
-    # 📥 --- POST: actualizar sin duplicar el préstamo ---
+    # 📥 POST — actualizar sin duplicar préstamo
     try:
         if not prestamo:
             return jsonify({"ok": False, "error": "No hay préstamo asociado a este cliente."})
@@ -109,17 +220,14 @@ def editar_prestamo(cliente_id):
         nuevo_plazo = int(request.form.get("plazo", prestamo.plazo))
         nueva_frecuencia = request.form.get("frecuencia", prestamo.frecuencia)
 
-        # ⚙️ Actualizar valores sin alterar caja ni saldo total
         prestamo.monto = nuevo_monto
         prestamo.interes = nuevo_interes
         prestamo.plazo = nuevo_plazo
         prestamo.frecuencia = nueva_frecuencia
 
-        # ✅ Mantener el saldo actual si ya tiene abonos
-        # Solo recalcular si el préstamo estaba sin abonos
+        # ✅ Mantener saldo si ya tiene abonos
         if not prestamo.abonos or len(prestamo.abonos) == 0:
             prestamo.saldo = nuevo_monto + (nuevo_monto * nuevo_interes / 100)
-        # En caso contrario, el saldo existente permanece sin cambios
 
         db.session.commit()
         return jsonify({"ok": True, "msg": "Préstamo actualizado correctamente (sin duplicar saldo)."})
@@ -127,35 +235,42 @@ def editar_prestamo(cliente_id):
         db.session.rollback()
         return jsonify({"ok": False, "error": str(e)})
 
+
+# ======================================================
+# 🔐 LOGIN Y LOGOUT
+# ======================================================
 @bp.route("/login", methods=["GET", "POST"])
 def login():
+    """Formulario de inicio de sesión."""
     if request.method == "POST":
         usuario = request.form.get("usuario", "").strip()
         clave = request.form.get("clave", "").strip()
         if usuario == VALID_USER and clave == VALID_PASS:
             session["usuario"] = usuario
-            flash("Inicio de sesión correcto", "success")
+            flash("Inicio de sesión correcto ✅", "success")
             return redirect(url_for("rutas.index"))
-        flash("Usuario o clave incorrectos", "danger")
+        flash("Usuario o clave incorrectos ❌", "danger")
     return render_template("login.html")
 
 
 @bp.route("/logout")
 def logout():
+    """Cerrar sesión del usuario."""
     session.pop("usuario", None)
-    flash("Sesión cerrada", "info")
+    flash("👋 Sesión cerrada correctamente.", "info")
     return redirect(url_for("rutas.login"))
 
 
-# ==============================
-# CLIENTES (cancelados, reactivar, orden, CRUD)
-# ==============================
+# ======================================================
+# 👥 CLIENTES CANCELADOS — LISTADO Y REACTIVACIÓN
+# ======================================================
 @bp.route("/clientes_cancelados")
 @login_required
 def clientes_cancelados_view():
     clientes = Cliente.query.filter_by(cancelado=True).order_by(Cliente.nombre.asc()).all()
     total_cancelados = len(clientes)
     total_saldos = sum(c.saldo or 0 for c in clientes)
+
     return render_template(
         "clientes_cancelados.html",
         clientes=clientes,
@@ -176,15 +291,17 @@ def reactivar_cliente(cliente_id):
     # ✅ Reactivar cliente
     cliente.cancelado = False
     cliente.saldo = 0.0
-    # Campo estaba siendo usado aunque no está en el modelo mostrado; si existe, se setea:
     if hasattr(cliente, "ultimo_abono_fecha"):
         cliente.ultimo_abono_fecha = None
 
     db.session.commit()
-    flash(f"El cliente {cliente.nombre} fue reactivado correctamente.", "success")
+    flash(f"El cliente {cliente.nombre} fue reactivado correctamente ✅", "success")
     return redirect(url_for("rutas.clientes_cancelados_view"))
 
 
+# ======================================================
+# ✏️ ACTUALIZAR ORDEN DE CLIENTE
+# ======================================================
 @bp.route("/actualizar_orden/<int:cliente_id>", methods=["POST"])
 @login_required
 def actualizar_orden(cliente_id):
@@ -201,9 +318,13 @@ def actualizar_orden(cliente_id):
     return redirect(url_for("rutas.index"))
 
 
+# ======================================================
+# 🧍‍♂️ NUEVO CLIENTE — CREACIÓN Y REACTIVACIÓN
+# ======================================================
 @bp.route("/nuevo_cliente", methods=["GET", "POST"])
 @login_required
 def nuevo_cliente():
+    from datetime import timedelta  # para day math en otras partes si se usa
     if request.method == "POST":
         nombre = request.form.get("nombre")
         codigo = request.form.get("codigo")
@@ -214,7 +335,7 @@ def nuevo_cliente():
         plazo = request.form.get("plazo", type=int)
         orden = request.form.get("orden", type=int)
 
-        # ✅ Leer frecuencia desde el formulario
+        # 🔁 Frecuencia del préstamo
         frecuencia = (request.form.get("frecuencia") or "diario").strip().lower()
         FRECUENCIAS_VALIDAS = {"diario", "semanal", "quincenal", "mensual"}
         if frecuencia not in FRECUENCIAS_VALIDAS:
@@ -224,29 +345,29 @@ def nuevo_cliente():
             flash("Debe ingresar un código de cliente.", "warning")
             return redirect(url_for("rutas.nuevo_cliente"))
 
-        # Verificar si ya existe el cliente
+        # 🔎 Verificar cliente existente
         cliente_existente = Cliente.query.filter_by(codigo=codigo).first()
 
-        # 🔹 Caso 1: existía y estaba cancelado → reactivar
+        # 🔹 Caso 1: Reactivar cliente cancelado
         if cliente_existente and cliente_existente.cancelado:
             cliente_existente.cancelado = False
             if nombre: cliente_existente.nombre = nombre
             if direccion: cliente_existente.direccion = direccion
             if telefono: cliente_existente.telefono = telefono
             if orden: cliente_existente.orden = orden
-            cliente_existente.fecha_creacion = date.today()
+            cliente_existente.fecha_creacion = local_date()
 
-            # Si hay monto, crear préstamo nuevo
+            # 💰 Crear préstamo nuevo si se ingresó monto
             if monto and monto > 0:
                 saldo_total = monto + (monto * (interes / 100.0))
                 nuevo_prestamo = Prestamo(
                     cliente_id=cliente_existente.id,
                     monto=monto,
                     saldo=saldo_total,
-                    fecha=date.today(),
+                    fecha=local_date(),
                     interes=interes,
                     plazo=plazo,
-                    frecuencia=frecuencia,  # ✅ ahora se guarda correctamente
+                    frecuencia=frecuencia,
                 )
                 db.session.add(nuevo_prestamo)
 
@@ -254,46 +375,46 @@ def nuevo_cliente():
                     tipo="prestamo",
                     monto=monto,
                     descripcion=f"Nuevo préstamo (reactivado) a {cliente_existente.nombre}",
-                    fecha=datetime.now(),
+                    fecha=hora_actual(),
                 )
                 db.session.add(mov)
 
                 cliente_existente.saldo = saldo_total
 
             db.session.commit()
-            actualizar_liquidacion_por_movimiento(date.today())
+            actualizar_liquidacion_por_movimiento(local_date())
             flash(f"Cliente {cliente_existente.nombre} reactivado correctamente.", "success")
             return redirect(url_for("rutas.index", resaltado=cliente_existente.id))
 
-        # 🔹 Caso 2: el código ya existe y NO está cancelado
+        # 🔹 Caso 2: Código duplicado y activo
         if cliente_existente and not cliente_existente.cancelado:
-            flash("Ese código ya pertenece a un cliente activo. Use ese cliente o elija otro código.", "warning")
+            flash("Ese código ya pertenece a un cliente activo.", "warning")
             return redirect(url_for("rutas.nuevo_cliente"))
 
-        # 🔹 Caso 3: crear cliente nuevo
+        # 🔹 Caso 3: Crear cliente nuevo
         cliente = Cliente(
             nombre=nombre or "",
             codigo=codigo,
             direccion=direccion or "",
             telefono=telefono or "",
             orden=orden,
-            fecha_creacion=date.today(),
+            fecha_creacion=local_date(),
             cancelado=False,
         )
         db.session.add(cliente)
         db.session.commit()
 
-        # Si hay préstamo inicial
+        # 💸 Crear préstamo inicial (si aplica)
         if monto and monto > 0:
             saldo_total = monto + (monto * (interes / 100.0))
             nuevo_prestamo = Prestamo(
                 cliente_id=cliente.id,
                 monto=monto,
                 saldo=saldo_total,
-                fecha=date.today(),
+                fecha=local_date(),
                 interes=interes,
                 plazo=plazo,
-                frecuencia=frecuencia,  # ✅ también aquí
+                frecuencia=frecuencia,
             )
             db.session.add(nuevo_prestamo)
 
@@ -301,48 +422,46 @@ def nuevo_cliente():
                 tipo="prestamo",
                 monto=monto,
                 descripcion=f"Préstamo inicial a {cliente.nombre or 'cliente'}",
-                fecha=datetime.now(),
+                fecha=hora_actual(),
             )
             db.session.add(mov)
-
             cliente.saldo = saldo_total
 
             db.session.commit()
-            actualizar_liquidacion_por_movimiento(date.today())
+            actualizar_liquidacion_por_movimiento(local_date())
 
         flash(f"Cliente {nombre or codigo} creado correctamente.", "success")
         return redirect(url_for("rutas.index", resaltado=cliente.id))
 
-    # Sugerir código para el formulario
+    # Código sugerido automático
     codigo_sugerido = generar_codigo_cliente()
     return render_template("nuevo_cliente.html", codigo_sugerido=codigo_sugerido)
 
+
+# ======================================================
+# ❌ ELIMINAR CLIENTE — CON REINTEGRO ÚNICO
+# ======================================================
 @bp.route("/eliminar_cliente/<int:cliente_id>", methods=["POST"])
 @login_required
 def eliminar_cliente(cliente_id):
-    from datetime import datetime, date
-    from helpers import actualizar_liquidacion_por_movimiento
-    from modelos import Cliente, MovimientoCaja, Prestamo
-    from extensions import db
-
     cliente = Cliente.query.get_or_404(cliente_id)
 
-    # 🚫 Evitar duplicados: si ya está cancelado, no seguir
+    # 🚫 Evitar duplicados
     if cliente.cancelado:
         flash(f"⚠️ El cliente {cliente.nombre} ya estaba cancelado.", "info")
         return redirect(url_for("rutas.index"))
 
     print(f"\n🧾 Eliminando cliente {cliente.nombre}...")
 
-    # 💰 Calcular el monto prestado sin intereses
+    # 💰 Monto prestado total
     monto_prestado = sum(p.monto for p in cliente.prestamos)
     saldo_restante = float(monto_prestado or 0.0)
 
-    # 🧹 1️⃣ Eliminar todos los préstamos
+    # 🧹 Eliminar préstamos
     for p in cliente.prestamos:
         db.session.delete(p)
 
-    # 🧹 2️⃣ Eliminar TODOS los movimientos anteriores del cliente (prestamos y reintegros)
+    # 🧹 Eliminar movimientos duplicados previos
     movs_previos = MovimientoCaja.query.filter(
         MovimientoCaja.descripcion.ilike(f"%{cliente.nombre}%")
     ).all()
@@ -350,33 +469,33 @@ def eliminar_cliente(cliente_id):
         print(f"🗑️ Eliminando movimiento duplicado ID {m.id}: {m.descripcion} (${m.monto})")
         db.session.delete(m)
 
-    # ❌ 3️⃣ Marcar cliente como cancelado
+    # ❌ Marcar como cancelado
     cliente.cancelado = True
     cliente.saldo = 0.0
 
-    # 💵 4️⃣ Crear un solo reintegro
+    # 💵 Crear reintegro único
     if saldo_restante > 0:
         mov_reverso = MovimientoCaja(
             tipo="entrada_manual",
             monto=saldo_restante,
             descripcion=f"Reintegro único de cliente {cliente.nombre}",
-            fecha=datetime.now(),
+            fecha=hora_actual(),
         )
         db.session.add(mov_reverso)
         print(f"✅ Reintegro único registrado: ${saldo_restante:.2f}")
 
-    # 💾 5️⃣ Guardar y actualizar liquidación
+    # 💾 Guardar y actualizar liquidación
     db.session.commit()
-    liq = actualizar_liquidacion_por_movimiento(date.today())
-    print(f"📅 Liquidación actualizada correctamente. Caja final: ${liq.caja:.2f}")
+    liq = actualizar_liquidacion_por_movimiento(local_date())
+    print(f"📅 Liquidación actualizada. Caja final: ${liq.caja:.2f}")
 
-    flash(f"✅ Cliente {cliente.nombre} eliminado correctamente y reintegro único aplicado.", "success")
+    flash(f"✅ Cliente {cliente.nombre} eliminado correctamente.", "success")
     return redirect(url_for("rutas.index"))
 
 
-# ==============================
-# PRÉSTAMOS Y ABONOS
-# ==============================
+# ======================================================
+# 💵 OTORGAR PRÉSTAMO A CLIENTE
+# ======================================================
 @bp.route("/otorgar_prestamo/<int:cliente_id>", methods=["POST"])
 @login_required
 def otorgar_prestamo(cliente_id):
@@ -386,42 +505,45 @@ def otorgar_prestamo(cliente_id):
         interes = float(request.form.get("interes", 0))
         plazo = int(request.form.get("plazo") or 0)
     except ValueError:
-        flash("Valores de préstamo inválidos", "danger")
+        flash("Valores de préstamo inválidos.", "danger")
         return redirect(url_for("rutas.index"))
 
     if monto <= 0:
         flash("El monto debe ser mayor a 0", "warning")
         return redirect(url_for("rutas.index"))
 
-    # ✅ Cálculo correcto del saldo con interés
+    # ✅ Calcular saldo con interés
     saldo_con_interes = monto + (monto * (interes / 100.0))
     prestamo = Prestamo(
         cliente_id=cliente.id,
         monto=monto,
         interes=interes,
         plazo=plazo,
-        fecha=date.today(),
+        fecha=local_date(),
         saldo=saldo_con_interes,
     )
     db.session.add(prestamo)
 
-    # Registrar salida en caja (préstamo entregado)
+    # 💸 Registrar salida en caja
     mov = MovimientoCaja(
         tipo="salida",
         monto=monto,
         descripcion=f"Préstamo a {cliente.nombre}",
-        fecha=datetime.now(),
+        fecha=hora_actual(),
     )
     db.session.add(mov)
     db.session.commit()
 
-    # ✅ Actualizamos la liquidación del día
-    actualizar_liquidacion_por_movimiento(date.today())
+    # 🔄 Actualizar liquidación del día
+    actualizar_liquidacion_por_movimiento(local_date())
 
-    flash(f"Préstamo de {monto:.2f} otorgado a {cliente.nombre}", "success")
+    flash(f"Préstamo de ${monto:.2f} otorgado a {cliente.nombre}", "success")
     return redirect(url_for("rutas.index"))
 
 
+# ======================================================
+# 💰 REGISTRAR ABONO POR CÓDIGO
+# ======================================================
 @bp.route("/registrar_abono_por_codigo", methods=["POST"])
 @login_required
 def registrar_abono_por_codigo():
@@ -435,7 +557,7 @@ def registrar_abono_por_codigo():
             return jsonify({"ok": False, "error": msg}), 400
         return redirect(url_for("rutas.index"))
 
-    # 🔎 Buscar cliente por código
+    # 🔎 Buscar cliente
     cliente = Cliente.query.filter_by(codigo=codigo).first()
     if not cliente:
         msg = "Código no encontrado"
@@ -444,7 +566,7 @@ def registrar_abono_por_codigo():
             return jsonify({"ok": False, "error": msg}), 404
         return redirect(url_for("rutas.index"))
 
-    # 🔍 Buscar préstamo activo (más reciente con saldo > 0)
+    # 🔍 Buscar préstamo activo
     prestamo = (
         Prestamo.query.filter(Prestamo.cliente_id == cliente.id, Prestamo.saldo > 0)
         .order_by(Prestamo.fecha.desc(), Prestamo.id.desc())
@@ -457,14 +579,13 @@ def registrar_abono_por_codigo():
             return jsonify({"ok": False, "error": msg}), 400
         return redirect(url_for("rutas.index"))
 
-    # 💰 Registrar el abono
-    abono = Abono(prestamo_id=prestamo.id, monto=monto, fecha=datetime.now())
+    # 💵 Registrar abono
+    abono = Abono(prestamo_id=prestamo.id, monto=monto, fecha=hora_actual())
     db.session.add(abono)
 
-    # 🔄 Actualizar saldo del préstamo
+    # 🔄 Actualizar saldo
     prestamo.saldo = max(0.0, (prestamo.saldo or 0) - monto)
 
-    # 🔁 Recalcular saldo total del cliente (sumando todos los préstamos)
     total_saldo_cliente = (
         db.session.query(func.coalesce(func.sum(Prestamo.saldo), 0.0))
         .filter(Prestamo.cliente_id == cliente.id)
@@ -473,11 +594,11 @@ def registrar_abono_por_codigo():
     )
     cliente.saldo = total_saldo_cliente
 
-    # 🟢 Registrar fecha del último abono (si el modelo tiene el campo)
+    # 📅 Actualizar fecha de abono
     if hasattr(cliente, "ultimo_abono_fecha"):
-        cliente.ultimo_abono_fecha = datetime.now().date()
+        cliente.ultimo_abono_fecha = local_date()
 
-    # ✅ Si quedó en cero, marcar como cancelado
+    # ✅ Si el saldo queda en 0 → cancelado
     cancelado = False
     if round(cliente.saldo, 2) <= 0:
         cliente.cancelado = True
@@ -486,9 +607,7 @@ def registrar_abono_por_codigo():
         flash(f"✅ {cliente.nombre} quedó en saldo 0 y fue movido a Clientes Cancelados.", "info")
 
     db.session.commit()
-
-    # 🔄 Actualizar liquidación del día
-    actualizar_liquidacion_por_movimiento(date.today())
+    actualizar_liquidacion_por_movimiento(local_date())
 
     # ⚡ Respuesta AJAX
     if request.headers.get("X-Requested-With") == "fetch":
@@ -505,17 +624,17 @@ def registrar_abono_por_codigo():
     flash(f"💰 Abono de ${monto:.2f} registrado para {cliente.nombre}", "success")
     return redirect(url_for("rutas.index"))
 
+
+# ======================================================
+# 📜 HISTORIAL DE ABONOS POR CLIENTE
+# ======================================================
 @bp.route("/historial_abonos/<int:cliente_id>")
 @login_required
 def historial_abonos(cliente_id):
-    from datetime import datetime
     cliente = Cliente.query.get_or_404(cliente_id)
-
     prestamo = cliente.prestamos[-1] if cliente.prestamos else None
 
-    # =========================
-    # DATOS DEL PRÉSTAMO
-    # =========================
+    # 🧮 Datos del préstamo
     if prestamo:
         monto = float(prestamo.monto or 0.0)
         interes = float(prestamo.interes or 0.0)
@@ -526,8 +645,7 @@ def historial_abonos(cliente_id):
         fecha_inicial = prestamo.fecha.strftime("%d-%m-%Y") if prestamo.fecha else "—"
     else:
         monto = total = cuota = 0.0
-        modo = "—"
-        fecha_inicial = "—"
+        modo = fecha_inicial = "—"
 
     datos_prestamo = {
         "nombre": cliente.nombre,
@@ -540,26 +658,16 @@ def historial_abonos(cliente_id):
         "saldo": float(cliente.saldo or 0.0),
     }
 
-    # =========================
-    # HISTORIAL DE ABONOS (corrigiendo saldo inicial)
-    # =========================
+    # 🧾 Historial de abonos
     items = []
-
-    # Si el cliente tiene un saldo real registrado, partimos de ahí;
-    # si no, usamos el total original del préstamo
     saldo_inicial = float(cliente.saldo or total)
 
     if prestamo and prestamo.abonos:
-        # Ordenamos del más antiguo al más reciente
         abonos_ordenados = sorted(prestamo.abonos, key=lambda x: x.fecha)
-
-        # Calculamos el saldo "hacia atrás" desde el saldo actual real
-        # para mostrar cómo se fue formando el saldo en el tiempo
         saldo_restante = saldo_inicial
         for a in reversed(abonos_ordenados):
             saldo_restante += float(a.monto or 0.0)
 
-        # Reiniciamos y recorremos hacia adelante mostrando cómo bajó el saldo
         saldo_actual = saldo_restante
         for a in abonos_ordenados:
             saldo_actual -= float(a.monto or 0.0)
@@ -573,27 +681,24 @@ def historial_abonos(cliente_id):
                 "monto": float(a.monto),
                 "saldo": round(saldo_actual, 2)
             })
-
-        # Invertimos para mostrar los más recientes arriba
         items.reverse()
 
-    # 🔹 Si no hay abonos, agregamos una fila automática
     if not items:
         items.append({
             "id": 0,
             "codigo": cliente.codigo,
-            "fecha": datetime.today().strftime("%d-%m-%Y"),
+            "fecha": hora_actual().strftime("%d-%m-%Y"),
             "hora": "auto",
             "monto": 0.00,
             "saldo": round(float(cliente.saldo or total or 0.0), 2)
         })
 
-    return jsonify({
-        "ok": True,
-        "prestamo": datos_prestamo,
-        "abonos": items
-    })
+    return jsonify({"ok": True, "prestamo": datos_prestamo, "abonos": items})
 
+
+# ======================================================
+# 💵 REGISTRAR ABONO DIRECTO POR CLIENTE
+# ======================================================
 @bp.route("/abonar/<int:cliente_id>", methods=["POST"])
 @login_required
 def abonar(cliente_id):
@@ -604,7 +709,6 @@ def abonar(cliente_id):
         flash("El monto del abono debe ser mayor que cero.", "warning")
         return redirect(url_for("rutas.index"))
 
-    # Buscar el préstamo activo más reciente
     prestamo = (
         Prestamo.query.filter_by(cliente_id=cliente.id)
         .order_by(Prestamo.id.desc())
@@ -614,35 +718,34 @@ def abonar(cliente_id):
         flash("⚠️ Este cliente no tiene préstamos activos.", "warning")
         return redirect(url_for("rutas.index"))
 
-    # ✅ Registrar el abono (solo en la tabla Abono)
     nuevo_abono = Abono(
         prestamo_id=prestamo.id,
         monto=monto_abono,
-        fecha=datetime.now(),
+        fecha=hora_actual(),
     )
     db.session.add(nuevo_abono)
 
-    # Actualizar saldos
+    # 🔄 Actualizar saldos
     prestamo.saldo = max(0.0, (prestamo.saldo or 0) - monto_abono)
     cliente.saldo = cliente.saldo_total()
     if hasattr(cliente, "ultimo_abono_fecha"):
-        cliente.ultimo_abono_fecha = datetime.now()
+        cliente.ultimo_abono_fecha = hora_actual()
 
-    # Si queda en 0, cancelarlo automáticamente
     if round(cliente.saldo, 2) <= 0:
         cliente.saldo = 0.0
         cliente.cancelado = True
         flash(f"✅ El cliente {cliente.nombre} ha sido cancelado.", "info")
 
     db.session.commit()
-
-    # ✅ Actualizar liquidación del día
-    actualizar_liquidacion_por_movimiento(date.today())
+    actualizar_liquidacion_por_movimiento(local_date())
 
     flash(f"💰 Se registró un abono de ${monto_abono:.2f} para {cliente.nombre}.", "success")
     return redirect(url_for("rutas.index"))
 
 
+# ======================================================
+# 🗑️ ELIMINAR ABONO (AJAX o POST normal)
+# ======================================================
 @bp.route("/eliminar_abono/<int:abono_id>", methods=["POST"])
 @login_required
 def eliminar_abono(abono_id):
@@ -651,14 +754,10 @@ def eliminar_abono(abono_id):
         prestamo = abono.prestamo
         cliente = prestamo.cliente
 
-        # 1️⃣ Restaurar saldo del préstamo
         prestamo.saldo = (prestamo.saldo or 0) + (abono.monto or 0)
-
-        # 2️⃣ Borrar el abono
         db.session.delete(abono)
         db.session.flush()
 
-        # 3️⃣ Recalcular saldo del cliente
         total_saldo_cliente = (
             db.session.query(func.coalesce(func.sum(Prestamo.saldo), 0.0))
             .filter(Prestamo.cliente_id == cliente.id)
@@ -667,16 +766,12 @@ def eliminar_abono(abono_id):
         )
         cliente.saldo = total_saldo_cliente
 
-        # 4️⃣ Reactivar si estaba cancelado y ahora debe
         if cliente.cancelado and round(cliente.saldo, 2) > 0:
             cliente.cancelado = False
 
-        # 5️⃣ Actualizar liquidación del día correspondiente al abono
         actualizar_liquidacion_por_movimiento(abono.fecha.date())
-
         db.session.commit()
 
-        # ⚡ AJAX
         if request.headers.get("X-Requested-With") == "fetch":
             return jsonify({
                 "ok": True,
@@ -696,9 +791,10 @@ def eliminar_abono(abono_id):
         return redirect(url_for("rutas.index"))
 
 
-# ==============================
-# CAJA (entradas/salidas/gastos + verificación/reparación)
-# ==============================
+
+# ======================================================
+# 💼 CAJA — MOVIMIENTO GENÉRICO (entrada_manual / salida / gasto)
+# ======================================================
 @bp.route("/caja/<tipo>", methods=["POST"])
 @login_required
 def caja_movimiento(tipo):
@@ -718,38 +814,47 @@ def caja_movimiento(tipo):
 
     descripcion = request.form.get("descripcion", f"{tipo.replace('_', ' ').capitalize()} manual")
 
-    # 🚫 Evitar registrar préstamos como salidas
+    # Evitar registrar préstamos como salidas
     if tipo == "salida" and ("préstamo" in descripcion.lower() or "prestamo" in descripcion.lower()):
-        flash("⚠️ Los préstamos no deben registrarse como salidas de caja. Usa el módulo de préstamos.", "warning")
+        flash("Los préstamos no deben registrarse como salidas de caja. Usa el módulo de préstamos.", "warning")
         return redirect(url_for("rutas.liquidacion_view"))
 
     mov = MovimientoCaja(
         tipo=tipo,
         monto=monto,
         descripcion=descripcion,
-        fecha=datetime.now(),
+        fecha=hora_actual(),
     )
     db.session.add(mov)
     db.session.commit()
 
-    actualizar_liquidacion_por_movimiento(date.today())
+    actualizar_liquidacion_por_movimiento(local_date())
 
     flash(f"{tipo.replace('_', ' ').capitalize()} registrada correctamente en la caja.", "success")
     return redirect(url_for("rutas.liquidacion_view"))
 
 
+# ======================================================
+# 💵 CAJA — ENTRADA DIRECTA
+# ======================================================
 @bp.route("/caja_entrada", methods=["POST"])
 @login_required
 def caja_entrada():
     return caja_movimiento("entrada_manual")
 
 
+# ======================================================
+# 💸 CAJA — SALIDA DIRECTA
+# ======================================================
 @bp.route("/caja_salida", methods=["POST"])
 @login_required
 def caja_salida():
     return caja_movimiento("salida")
 
 
+# ======================================================
+# 🧾 CAJA — GASTO DIRECTO
+# ======================================================
 @bp.route("/caja_gasto", methods=["POST"])
 @login_required
 def caja_gasto():
@@ -761,11 +866,11 @@ def caja_gasto():
             tipo="gasto",
             monto=monto,
             descripcion=descripcion or "Gasto general",
-            fecha=datetime.now(),
+            fecha=hora_actual(),
         )
         db.session.add(mov)
         db.session.commit()
-        actualizar_liquidacion_por_movimiento(date.today())
+        actualizar_liquidacion_por_movimiento(local_date())
         flash(f"🧾 Gasto de ${monto:.2f} registrado correctamente.", "warning")
     else:
         flash("Debe ingresar un monto válido.", "danger")
@@ -773,6 +878,9 @@ def caja_gasto():
     return redirect(url_for("rutas.liquidacion_view"))
 
 
+# ======================================================
+# 🔎 CAJA — VERIFICAR ABONOS MAL CLASIFICADOS
+# ======================================================
 @bp.route("/verificar_caja")
 @login_required
 def verificar_caja():
@@ -794,6 +902,9 @@ def verificar_caja():
     return redirect(url_for("rutas.liquidacion_view"))
 
 
+# ======================================================
+# 🩺 CAJA — REVISAR ESTADO (JSON)
+# ======================================================
 @bp.route("/revisar_caja_estado")
 @login_required
 def revisar_caja_estado():
@@ -806,6 +917,9 @@ def revisar_caja_estado():
     return jsonify({"errores": errores})
 
 
+# ======================================================
+# 🧹 CAJA — REPARAR (ELIMINA ABONOS MAL CLASIFICADOS)
+# ======================================================
 @bp.route("/reparar_caja")
 @login_required
 def reparar_caja():
@@ -824,7 +938,7 @@ def reparar_caja():
         db.session.delete(m)
     db.session.commit()
 
-    liq = actualizar_liquidacion_por_movimiento(date.today())
+    liq = actualizar_liquidacion_por_movimiento(local_date())
 
     flash(
         f"🧹 Se eliminaron {len(abonos_erroneos)} abonos mal clasificados y se recalculó la liquidación del {liq.fecha}.",
@@ -833,13 +947,13 @@ def reparar_caja():
     return redirect(url_for("rutas.liquidacion_view"))
 
 
-# ==============================
-# LIQUIDACIÓN (día actual, historial, detalles por día)
-# ==============================
+# ======================================================
+# 📊 LIQUIDACIÓN — VISTA DEL DÍA ACTUAL
+# ======================================================
 @bp.route("/liquidacion")
 @login_required
 def liquidacion_view():
-    hoy = date.today()
+    hoy = local_date()
     liq = Liquidacion.query.filter_by(fecha=hoy).first()
     if not liq:
         liq = crear_liquidacion_para_fecha(hoy)
@@ -861,6 +975,9 @@ def liquidacion_view():
     )
 
 
+# ======================================================
+# 🗂️ LIQUIDACIONES — HISTÓRICO Y RANGO DE FECHAS
+# ======================================================
 @bp.route("/liquidaciones", methods=["GET", "POST"])
 @login_required
 def liquidaciones():
@@ -909,6 +1026,9 @@ def liquidaciones():
     )
 
 
+# ======================================================
+# 📅 REPORTES — MOVIMIENTOS POR DÍA (entrada, abono, salida, gasto)
+# ======================================================
 @bp.route("/movimientos_por_dia/<tipo>/<fecha>")
 @login_required
 def movimientos_por_dia(tipo, fecha):
@@ -965,17 +1085,19 @@ def movimientos_por_dia(tipo, fecha):
         fecha=fecha_obj,
         total=total,
         titulo=titulo,
-        hoy=date.today(),
+        hoy=local_date(),
     )
 
 
+# ======================================================
+# 📅 REPORTES — PRÉSTAMOS POR DÍA
+# ======================================================
 @bp.route("/prestamos_por_dia/<fecha>")
 @login_required
 def prestamos_por_dia(fecha):
     fecha_obj = datetime.strptime(fecha, "%Y-%m-%d").date()
     start, end = day_range(fecha_obj)
 
-    # ✅ Solo préstamos de clientes activos (no cancelados)
     prestamos = (
         Prestamo.query
         .join(Cliente, Prestamo.cliente_id == Cliente.id)
@@ -999,6 +1121,9 @@ def prestamos_por_dia(fecha):
     )
 
 
+# ======================================================
+# 📅 REPORTES — SALIDAS POR DÍA
+# ======================================================
 @bp.route("/salidas_por_dia/<fecha>")
 @login_required
 def salidas_por_dia(fecha):
@@ -1019,6 +1144,9 @@ def salidas_por_dia(fecha):
     return render_template("salidas_por_dia.html", salidas=salidas, fecha=fecha_obj, total_salidas=total_salidas)
 
 
+# ======================================================
+# 📅 REPORTES — GASTOS POR DÍA
+# ======================================================
 @bp.route("/gastos_por_dia/<fecha>")
 @login_required
 def gastos_por_dia(fecha):
@@ -1039,9 +1167,9 @@ def gastos_por_dia(fecha):
     return render_template("gastos_por_dia.html", gastos=gastos, fecha=fecha_obj, total_gastos=total_gastos)
 
 
-# ==============================
-# ERRORES
-# ==============================
+# ======================================================
+# 🚫 ERROR 404 — PÁGINA NO ENCONTRADA
+# ======================================================
 @bp.app_errorhandler(404)
 def page_not_found(e):
     return render_template("404.html"), 404

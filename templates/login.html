@@ -1,4 +1,3 @@
-
 {% extends "base.html" %}
 {% block title %}Iniciar Sesión{% endblock %}
 
@@ -7,7 +6,8 @@
   <div class="card shadow-lg p-4 border-0" style="max-width: 420px; width: 100%; border-radius: 16px;">
     <div class="text-center mb-4">
       <h3 class="fw-bold text-primary">🔐 Iniciar Sesión</h3>
-      <p class="text-muted mb-0">Sistema de Préstamos</p>
+      <p class="text-muted mb-1">Sistema de Préstamos</p>
+      <p class="text-muted">🕒 Hora actual en Chile: {{ hora_actual() }}</p>
     </div>
 
     <!-- Formulario de Login -->

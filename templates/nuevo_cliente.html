@@ -1,8 +1,9 @@
-
 {% extends "base.html" %}
 {% block title %}Nuevo Cliente{% endblock %}
 {% block content %}
 <h2>🧾 Nuevo Cliente</h2>
+<p class="text-muted mb-4">🕒 Hora actual en Chile: {{ hora_actual() }}</p>
+
 
 <form id="formCliente" action="{{ url_for('rutas.nuevo_cliente') }}" method="post" class="row g-3">
 

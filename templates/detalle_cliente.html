@@ -1,29 +1,55 @@
 {% extends "base.html" %}
-{% block title %}Detalle de {{ cliente.nombre }}{% endblock %}
+{% block title %}👤 Detalle de {{ cliente.nombre }}{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-  <h2 class="mb-4">👤 {{ cliente.nombre }}</h2>
-
-  <div class="mb-3">
-    <p><strong>Código:</strong> {{ cliente.codigo }}</p>
-    <p><strong>Dirección:</strong> {{ cliente.direccion or "No registrada" }}</p>
-    <p><strong>Teléfono:</strong> {{ cliente.telefono or "No registrado" }}</p>
-    <p><strong>Fecha de creación:</strong> {{ cliente.fecha_creacion.strftime("%d/%m/%Y") }}</p>
-    <p><strong>Estado:</strong>
-      {% if cliente.cancelado %}
-        <span class="badge bg-danger">Cancelado</span>
-      {% else %}
-        <span class="badge bg-success">Activo</span>
-      {% endif %}
-    </p>
+<div class="container mt-4 mb-5">
+  <!-- 🧭 Encabezado -->
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <h2 class="m-0">👤 {{ cliente.nombre }}</h2>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('rutas.index') }}" class="btn btn-outline-secondary btn-sm">⬅️ Volver</a>
+      <!-- 🔴 Botón eliminar cliente -->
+      <form action="{{ url_for('rutas.eliminar_cliente', cliente_id=cliente.id) }}" method="POST" onsubmit="return confirmarEliminacion();" style="display:inline;">
+        <button type="submit" class="btn btn-danger btn-sm">🗑️ Eliminar</button>
+      </form>
+    </div>
   </div>
 
-  <!-- Nuevo préstamo -->
-  {% if not cliente.cancelado %}
-  <div class="card mb-4 shadow-sm">
+  <!-- 🪪 Información del cliente -->
+  <div class="card shadow-sm mb-4">
     <div class="card-body">
-      <h5 class="card-title">➕ Otorgar nuevo préstamo</h5>
+      <div class="row">
+        <div class="col-md-6">
+          <p><strong>📄 Código:</strong> {{ cliente.codigo }}</p>
+          <p><strong>🏠 Dirección:</strong> {{ cliente.direccion or "No registrada" }}</p>
+          <p><strong>📞 Teléfono:</strong> {{ cliente.telefono or "No registrado" }}</p>
+        </div>
+        <div class="col-md-6">
+          <p><strong>📅 Fecha de creación:</strong> {{ cliente.fecha_creacion.strftime("%d/%m/%Y") }}</p>
+          <p><strong>💰 Saldo total:</strong> 
+            {% if cliente.saldo_total() > 0 %}
+              <span class="fw-bold text-success">${{ "%.2f"|format(cliente.saldo_total()) }}</span>
+            {% else %}
+              <span class="text-muted">Cancelado</span>
+            {% endif %}
+          </p>
+          <p><strong>Estado:</strong>
+            {% if cliente.cancelado %}
+              <span class="badge bg-danger">Cancelado</span>
+            {% else %}
+              <span class="badge bg-success">Activo</span>
+            {% endif %}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 💸 Nuevo préstamo -->
+  {% if not cliente.cancelado %}
+  <div class="card mb-4 shadow-sm border-0">
+    <div class="card-body">
+      <h5 class="card-title mb-3">➕ Otorgar nuevo préstamo</h5>
       <form action="{{ url_for('rutas.otorgar_prestamo', cliente_id=cliente.id) }}" method="POST" class="row g-2 align-items-center">
         <div class="col-md-3">
           <input type="number" name="monto" step="0.01" class="form-control" placeholder="Monto" required>
@@ -42,21 +68,20 @@
   </div>
   {% endif %}
 
-  <!-- Lista de préstamos -->
+  <!-- 🧾 Lista de préstamos -->
   <div class="card shadow-sm">
     <div class="card-body">
       <h5 class="card-title">💰 Préstamos del cliente</h5>
-
       {% if prestamos %}
       <table class="table table-bordered table-hover align-middle text-center mt-3">
         <thead class="table-dark">
           <tr>
-            <th>Fecha</th>
-            <th>Monto</th>
-            <th>Interés</th>
-            <th>Plazo</th>
-            <th>Saldo</th>
-            <th>Abonos</th>
+            <th>📅 Fecha</th>
+            <th>💵 Monto</th>
+            <th>📈 Interés</th>
+            <th>⏳ Plazo</th>
+            <th>💰 Saldo</th>
+            <th>📜 Abonos</th>
           </tr>
         </thead>
         <tbody>
@@ -65,12 +90,12 @@
             <td>{{ p.fecha.strftime("%d/%m/%Y") }}</td>
             <td>${{ "%.2f"|format(p.monto) }}</td>
             <td>{{ "%.2f"|format(p.interes or 0) }}%</td>
-            <td>{{ p.plazo or '-' }}</td>
+            <td>{{ p.plazo or "-" }}</td>
             <td>
               {% if p.saldo <= 0 %}
                 <span class="text-muted">Cancelado</span>
               {% else %}
-                ${{ "%.2f"|format(p.saldo) }}
+                <span class="fw-bold text-success">${{ "%.2f"|format(p.saldo) }}</span>
               {% endif %}
             </td>
             <td>
@@ -79,7 +104,7 @@
                 📜 Ver Abonos
               </button>
               {% else %}
-              <span class="text-muted">-</span>
+              <span class="text-muted">—</span>
               {% endif %}
             </td>
           </tr>
@@ -87,29 +112,34 @@
         </tbody>
       </table>
       {% else %}
-      <div class="alert alert-info">No hay préstamos registrados para este cliente.</div>
+      <div class="alert alert-info mt-3 text-center">
+        ℹ️ No hay préstamos registrados para este cliente.
+      </div>
       {% endif %}
     </div>
   </div>
 
-  <a href="{{ url_for('rutas.index') }}" class="btn btn-secondary mt-4">⬅️ Volver</a>
+  <!-- 🕒 Hora actual -->
+  <div class="text-end mt-4 text-muted">
+    🕒 Hora actual: {{ hora_actual() }}
+  </div>
 </div>
 
-<!-- Modal de abonos -->
+<!-- 📦 Modal de abonos -->
 <div class="modal fade" id="modalAbonos" tabindex="-1" aria-labelledby="modalAbonosLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="modalAbonosLabel">Historial de Abonos</h5>
+      <div class="modal-header bg-dark text-white">
+        <h5 class="modal-title" id="modalAbonosLabel">📜 Historial de Abonos</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
       </div>
       <div class="modal-body">
         <table class="table table-sm table-bordered text-center align-middle">
           <thead class="table-light">
             <tr>
-              <th>Fecha</th>
-              <th>Hora</th>
-              <th>Monto</th>
+              <th>📅 Fecha</th>
+              <th>🕒 Hora</th>
+              <th>💰 Monto</th>
             </tr>
           </thead>
           <tbody id="tablaAbonosBody">
@@ -121,15 +151,18 @@
   </div>
 </div>
 
+<!-- ⚙️ Script -->
 <script>
+function confirmarEliminacion() {
+  return confirm("¿Seguro que deseas eliminar este cliente? Esta acción no se puede deshacer.");
+}
+
 document.addEventListener("DOMContentLoaded", () => {
-  // Ver abonos del préstamo seleccionado
   document.querySelectorAll(".ver-abonos").forEach(btn => {
     btn.addEventListener("click", async () => {
       const prestamoId = btn.dataset.prestamoId;
       const modal = new bootstrap.Modal(document.getElementById("modalAbonos"));
       const tbody = document.getElementById("tablaAbonosBody");
-
       tbody.innerHTML = "<tr><td colspan='3'><em>Cargando...</em></td></tr>";
 
       try {

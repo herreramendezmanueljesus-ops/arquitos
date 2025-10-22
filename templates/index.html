@@ -3,19 +3,14 @@
 
 {% block content %}
 <h2 class="mb-4">📋 Listado de Clientes</h2>
+<p class="text-end text-muted mb-3">🕒 Hora actual en Chile: {{ hora_actual() }}</p>
 
 <!-- =================== BOTONES PRINCIPALES =================== -->
 <div class="mb-3 d-flex flex-wrap gap-2">
   <a class="btn btn-primary" href="{{ url_for('rutas.nuevo_cliente') }}">➕ Nuevo Cliente</a>
   <a class="btn btn-secondary" href="{{ url_for('rutas.liquidacion_view') }}">📊 Ver Liquidación</a>
   <a class="btn btn-outline-dark" href="{{ url_for('rutas.clientes_cancelados_view') }}">🚫 Cancelados</a>
-</div>
-
-<!-- =================== FECHA Y TOTALES =================== -->
-<p><strong>Fecha:</strong> {{ hoy.strftime("%d/%m/%Y") }}</p>
-<div class="mb-3">
-  <strong>Caja total:</strong> ${{ "%.2f"|format(resumen.caja_total) }} |
-  <strong>Cartera total:</strong> ${{ "%.2f"|format(resumen.cartera_total) }}
+  <a class="btn btn-outline-primary" href="{{ url_for('rutas.dashboard') }}">📈 Dashboard</a>
 </div>
 
 <!-- =================== TABLA DE CLIENTES =================== -->
