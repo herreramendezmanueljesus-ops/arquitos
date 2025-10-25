@@ -51,9 +51,8 @@ def login_required(f):
         return f(*args, **kwargs)
     return wrapper
 
-
 # ======================================================
-# 📊 DASHBOARD GENERAL — Créditos
+# 📊 DASHBOARD GENERAL — Créditos (versión corregida)
 # ======================================================
 @app_rutas.route("/dashboard")
 @login_required
@@ -61,32 +60,66 @@ def dashboard():
     hoy = local_date()
     start, end = day_range(hoy)
 
-    total_clientes_activos = db.session.query(func.count(Cliente.id)) \
-        .filter(Cliente.cancelado == False).scalar() or 0
+    # 🔹 Total de clientes activos
+    total_clientes_activos = (
+        db.session.query(func.count(Cliente.id))
+        .filter(Cliente.cancelado == False)
+        .scalar() or 0
+    )
 
-    total_abonos = db.session.query(func.coalesce(func.sum(Abono.monto), 0)) \
-        .filter(Abono.fecha >= start, Abono.fecha < end).scalar() or 0.0
+    # 💰 Total de abonos del día
+    total_abonos = (
+        db.session.query(func.coalesce(func.sum(Abono.monto), 0.0))
+        .filter(Abono.fecha >= start, Abono.fecha < end)
+        .scalar() or 0.0
+    )
 
-    total_prestamos = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0)) \
-        .filter(MovimientoCaja.tipo == "prestamo",
-                MovimientoCaja.fecha >= start,
-                MovimientoCaja.fecha < end).scalar() or 0.0
+    # 🏦 Total de préstamos (desde Prestamo, no MovimientoCaja)
+    total_prestamos = (
+        db.session.query(func.coalesce(func.sum(Prestamo.monto), 0.0))
+        .join(Cliente, Prestamo.cliente_id == Cliente.id)
+        .filter(
+            Cliente.cancelado == False,
+            Prestamo.fecha >= start,
+            Prestamo.fecha < end
+        )
+        .scalar() or 0.0
+    )
 
-    total_entradas = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0)) \
-        .filter(MovimientoCaja.tipo == "entrada_manual",
-                MovimientoCaja.fecha >= start,
-                MovimientoCaja.fecha < end).scalar() or 0.0
+    # 💵 Entradas manuales
+    total_entradas = (
+        db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0.0))
+        .filter(
+            MovimientoCaja.tipo == "entrada_manual",
+            MovimientoCaja.fecha >= start,
+            MovimientoCaja.fecha < end
+        )
+        .scalar() or 0.0
+    )
 
-    total_salidas = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0)) \
-        .filter(MovimientoCaja.tipo == "salida",
-                MovimientoCaja.fecha >= start,
-                MovimientoCaja.fecha < end).scalar() or 0.0
+    # 💸 Salidas
+    total_salidas = (
+        db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0.0))
+        .filter(
+            MovimientoCaja.tipo == "salida",
+            MovimientoCaja.fecha >= start,
+            MovimientoCaja.fecha < end
+        )
+        .scalar() or 0.0
+    )
 
-    total_gastos = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0)) \
-        .filter(MovimientoCaja.tipo == "gasto",
-                MovimientoCaja.fecha >= start,
-                MovimientoCaja.fecha < end).scalar() or 0.0
+    # 🧾 Gastos
+    total_gastos = (
+        db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0.0))
+        .filter(
+            MovimientoCaja.tipo == "gasto",
+            MovimientoCaja.fecha >= start,
+            MovimientoCaja.fecha < end
+        )
+        .scalar() or 0.0
+    )
 
+    # 📦 Caja total del día
     caja_total = total_abonos + total_entradas - (total_prestamos + total_salidas + total_gastos)
 
     return render_template(
@@ -98,12 +131,11 @@ def dashboard():
         total_entradas=total_entradas,
         total_salidas=total_salidas,
         total_gastos=total_gastos,
-        caja_total=caja_total
+        caja_total=caja_total,
     )
 
-
 # ======================================================
-# 🏠 RUTA PRINCIPAL — CLIENTES + TARJETA DE RESUMEN
+# 🏠 RUTA PRINCIPAL — CLIENTES + TARJETA DE RESUMEN (corregida)
 # ======================================================
 @app_rutas.route("/")
 @login_required
@@ -114,7 +146,7 @@ def index():
         .all()
     )
 
-    # Reasignar orden si está roto
+    # 🔄 Reasignar orden si está roto
     for idx, c in enumerate(clientes, start=1):
         if not c.orden or c.orden != idx:
             c.orden = idx
@@ -137,29 +169,59 @@ def index():
     resumen = obtener_resumen_total()
     start, end = day_range(hoy)
 
-    total_abonos = db.session.query(func.coalesce(func.sum(Abono.monto), 0)) \
-        .filter(Abono.fecha >= start, Abono.fecha < end).scalar() or 0.0
+    # 💰 Total abonos
+    total_abonos = (
+        db.session.query(func.coalesce(func.sum(Abono.monto), 0.0))
+        .filter(Abono.fecha >= start, Abono.fecha < end)
+        .scalar() or 0.0
+    )
 
-    total_prestamos = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0)) \
-        .filter(MovimientoCaja.tipo == "prestamo",
-                MovimientoCaja.fecha >= start,
-                MovimientoCaja.fecha < end).scalar() or 0.0
+    # 🏦 Total préstamos (corregido — desde Prestamo)
+    total_prestamos = (
+        db.session.query(func.coalesce(func.sum(Prestamo.monto), 0.0))
+        .join(Cliente, Prestamo.cliente_id == Cliente.id)
+        .filter(
+            Cliente.cancelado == False,
+            Prestamo.fecha >= start,
+            Prestamo.fecha < end
+        )
+        .scalar() or 0.0
+    )
 
-    total_entradas = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0)) \
-        .filter(MovimientoCaja.tipo == "entrada_manual",
-                MovimientoCaja.fecha >= start,
-                MovimientoCaja.fecha < end).scalar() or 0.0
+    # 💵 Entradas manuales
+    total_entradas = (
+        db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0.0))
+        .filter(
+            MovimientoCaja.tipo == "entrada_manual",
+            MovimientoCaja.fecha >= start,
+            MovimientoCaja.fecha < end
+        )
+        .scalar() or 0.0
+    )
 
-    total_salidas = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0)) \
-        .filter(MovimientoCaja.tipo == "salida",
-                MovimientoCaja.fecha >= start,
-                MovimientoCaja.fecha < end).scalar() or 0.0
+    # 💸 Salidas
+    total_salidas = (
+        db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0.0))
+        .filter(
+            MovimientoCaja.tipo == "salida",
+            MovimientoCaja.fecha >= start,
+            MovimientoCaja.fecha < end
+        )
+        .scalar() or 0.0
+    )
 
-    total_gastos = db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0)) \
-        .filter(MovimientoCaja.tipo == "gasto",
-                MovimientoCaja.fecha >= start,
-                MovimientoCaja.fecha < end).scalar() or 0.0
+    # 🧾 Gastos
+    total_gastos = (
+        db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0.0))
+        .filter(
+            MovimientoCaja.tipo == "gasto",
+            MovimientoCaja.fecha >= start,
+            MovimientoCaja.fecha < end
+        )
+        .scalar() or 0.0
+    )
 
+    # 📦 Caja total del día
     caja_total = total_abonos + total_entradas - (total_prestamos + total_salidas + total_gastos)
 
     return render_template(
@@ -172,8 +234,10 @@ def index():
         total_entradas=total_entradas,
         total_salidas=total_salidas,
         total_gastos=total_gastos,
-        caja_total=caja_total
+        caja_total=caja_total,
     )
+
+
 # ======================================================
 # ✏️ EDITAR PRÉSTAMO — (GET/POST)
 # ======================================================
@@ -240,44 +304,104 @@ def logout():
     return redirect(url_for("app_rutas.login"))
 
 # ======================================================
-# 🧍‍♂️ NUEVO CLIENTE — CREACIÓN Y REACTIVACIÓN
+# 🧍‍♂️ NUEVO CLIENTE — CREACIÓN Y REACTIVACIÓN (Versión optimizada)
 # ======================================================
 @app_rutas.route("/nuevo_cliente", methods=["GET", "POST"])
 @login_required
 def nuevo_cliente():
     if request.method == "POST":
-        nombre = request.form.get("nombre")
-        codigo = request.form.get("codigo")
-        direccion = request.form.get("direccion")
-        telefono = request.form.get("telefono")
-        monto = request.form.get("monto", type=float)
-        interes = request.form.get("interes", type=float) or 0.0
-        plazo = request.form.get("plazo", type=int)
-        orden = request.form.get("orden", type=int)
-        frecuencia = (request.form.get("frecuencia") or "diario").strip().lower()
-        FRECUENCIAS_VALIDAS = {"diario", "semanal", "quincenal", "mensual"}
-        if frecuencia not in FRECUENCIAS_VALIDAS:
-            frecuencia = "diario"
+        try:
+            # ======================================================
+            # 🧾 Captura de datos del formulario
+            # ======================================================
+            nombre = (request.form.get("nombre") or "").strip()
+            codigo = (request.form.get("codigo") or "").strip()
+            direccion = (request.form.get("direccion") or "").strip()
+            telefono = (request.form.get("telefono") or "").strip()
+            monto = request.form.get("monto", type=float) or 0.0
+            interes = request.form.get("interes", type=float) or 0.0
+            plazo = request.form.get("plazo", type=int) or 0
+            orden = request.form.get("orden", type=int) or 0
+            frecuencia = (request.form.get("frecuencia") or "diario").strip().lower()
 
-        if not codigo:
-            flash("Debe ingresar un código de cliente.", "warning")
-            return redirect(url_for("app_rutas.nuevo_cliente"))
+            FRECUENCIAS_VALIDAS = {"diario", "semanal", "quincenal", "mensual"}
+            if frecuencia not in FRECUENCIAS_VALIDAS:
+                frecuencia = "diario"
 
-        cliente_existente = Cliente.query.filter_by(codigo=codigo).first()
+            # ======================================================
+            # 🔎 Validaciones iniciales
+            # ======================================================
+            if not codigo:
+                flash("Debe ingresar un código de cliente.", "warning")
+                return redirect(url_for("app_rutas.nuevo_cliente"))
 
-        # 🔁 Reactivar cliente cancelado
-        if cliente_existente and cliente_existente.cancelado:
-            cliente_existente.cancelado = False
-            cliente_existente.nombre = nombre or cliente_existente.nombre
-            cliente_existente.direccion = direccion or cliente_existente.direccion
-            cliente_existente.telefono = telefono or cliente_existente.telefono
-            cliente_existente.orden = orden or cliente_existente.orden
-            cliente_existente.fecha_creacion = local_date()
+            cliente_existente = Cliente.query.filter_by(codigo=codigo).first()
 
-            if monto and monto > 0:
+            # ------------------------------------------------------
+            # 🔁 Reactivar cliente cancelado
+            # ------------------------------------------------------
+            if cliente_existente and cliente_existente.cancelado:
+                cliente_existente.cancelado = False
+                cliente_existente.nombre = nombre or cliente_existente.nombre
+                cliente_existente.direccion = direccion or cliente_existente.direccion
+                cliente_existente.telefono = telefono or cliente_existente.telefono
+                cliente_existente.orden = orden or cliente_existente.orden
+                cliente_existente.fecha_creacion = local_date()
+
+                if monto > 0:
+                    saldo_total = monto + (monto * (interes / 100.0))
+                    nuevo_prestamo = Prestamo(
+                        cliente_id=cliente_existente.id,
+                        monto=monto,
+                        saldo=saldo_total,
+                        fecha=local_date(),
+                        interes=interes,
+                        plazo=plazo,
+                        frecuencia=frecuencia,
+                    )
+                    mov = MovimientoCaja(
+                        tipo="prestamo",
+                        monto=monto,
+                        descripcion=f"Nuevo préstamo (reactivado) a {cliente_existente.nombre}",
+                        fecha=hora_actual(),
+                    )
+                    db.session.add_all([nuevo_prestamo, mov])
+                    cliente_existente.saldo = saldo_total
+
+                db.session.commit()
+                if monto > 0:
+                    actualizar_liquidacion_por_movimiento(local_date())
+
+                flash(f"Cliente {cliente_existente.nombre} reactivado correctamente.", "success")
+                return redirect(url_for("app_rutas.index", resaltado=cliente_existente.id))
+
+            # ------------------------------------------------------
+            # 🚫 Código duplicado activo
+            # ------------------------------------------------------
+            if cliente_existente and not cliente_existente.cancelado:
+                flash("Ese código ya pertenece a un cliente activo.", "warning")
+                return redirect(url_for("app_rutas.nuevo_cliente"))
+
+            # ======================================================
+            # 🧍‍♂️ Crear cliente nuevo
+            # ======================================================
+            # ⚡ Si no hay nombre, usar el código (como antes)
+            cliente = Cliente(
+                nombre=nombre or codigo,
+                codigo=codigo,
+                direccion=direccion or "",
+                telefono=telefono or "",
+                orden=orden,
+                fecha_creacion=local_date(),
+                cancelado=False,
+            )
+            db.session.add(cliente)
+
+            # 💸 Crear préstamo inicial si se ingresó monto
+            if monto > 0:
                 saldo_total = monto + (monto * (interes / 100.0))
                 nuevo_prestamo = Prestamo(
-                    cliente_id=cliente_existente.id,
+                    cliente=cliente,
                     monto=monto,
                     saldo=saldo_total,
                     fecha=local_date(),
@@ -285,71 +409,37 @@ def nuevo_cliente():
                     plazo=plazo,
                     frecuencia=frecuencia,
                 )
-                db.session.add(nuevo_prestamo)
-
                 mov = MovimientoCaja(
                     tipo="prestamo",
                     monto=monto,
-                    descripcion=f"Nuevo préstamo (reactivado) a {cliente_existente.nombre}",
-                    fecha=hora_actual(),  # ✅ hora actual en Chile
+                    descripcion=f"Préstamo inicial a {cliente.nombre}",
+                    fecha=hora_actual(),
                 )
-                db.session.add(mov)
-                cliente_existente.saldo = saldo_total
+                cliente.saldo = saldo_total
+                db.session.add_all([nuevo_prestamo, mov])
 
+            # ✅ Un solo commit (más rápido)
             db.session.commit()
-            actualizar_liquidacion_por_movimiento(local_date())
-            flash(f"Cliente {cliente_existente.nombre} reactivado correctamente.", "success")
-            return redirect(url_for("app_rutas.index", resaltado=cliente_existente.id))
 
-        # 🔹 Código duplicado y activo
-        if cliente_existente and not cliente_existente.cancelado:
-            flash("Ese código ya pertenece a un cliente activo.", "warning")
+            # ⚡ Actualizar liquidación solo si hubo préstamo
+            if monto > 0:
+                actualizar_liquidacion_por_movimiento(local_date())
+
+            flash(f"Cliente {cliente.nombre} creado correctamente.", "success")
+            return redirect(url_for("app_rutas.index", resaltado=cliente.id))
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"[ERROR nuevo_cliente] {e}")
+            flash("Ocurrió un error al crear el cliente.", "danger")
             return redirect(url_for("app_rutas.nuevo_cliente"))
 
-        # 🔹 Crear cliente nuevo
-        cliente = Cliente(
-            nombre=nombre or "",
-            codigo=codigo,
-            direccion=direccion or "",
-            telefono=telefono or "",
-            orden=orden,
-            fecha_creacion=local_date(),
-            cancelado=False,
-        )
-        db.session.add(cliente)
-        db.session.commit()
-
-        # 💸 Crear préstamo inicial
-        if monto and monto > 0:
-            saldo_total = monto + (monto * (interes / 100.0))
-            nuevo_prestamo = Prestamo(
-                cliente_id=cliente.id,
-                monto=monto,
-                saldo=saldo_total,
-                fecha=local_date(),
-                interes=interes,
-                plazo=plazo,
-                frecuencia=frecuencia,
-            )
-            db.session.add(nuevo_prestamo)
-
-            mov = MovimientoCaja(
-                tipo="prestamo",
-                monto=monto,
-                descripcion=f"Préstamo inicial a {cliente.nombre or 'cliente'}",
-                fecha=hora_actual(),  # ✅ hora actual en Chile
-            )
-            db.session.add(mov)
-            cliente.saldo = saldo_total
-
-            db.session.commit()
-            actualizar_liquidacion_por_movimiento(local_date())
-
-        flash(f"Cliente {nombre or codigo} creado correctamente.", "success")
-        return redirect(url_for("app_rutas.index", resaltado=cliente.id))
-
+    # ======================================================
+    # 📋 GET — Mostrar formulario
+    # ======================================================
     codigo_sugerido = generar_codigo_cliente()
     return render_template("nuevo_cliente.html", codigo_sugerido=codigo_sugerido)
+
 
 
 # ======================================================
@@ -525,48 +615,77 @@ def actualizar_orden(cliente_id):
 
 
 # ======================================================
-# ❌ ELIMINAR CLIENTE — CON REINTEGRO ÚNICO
+# ❌ ELIMINAR CLIENTE — CON REINTEGRO ÚNICO (Optimizada sin romper lógica)
 # ======================================================
 @app_rutas.route("/eliminar_cliente/<int:cliente_id>", methods=["POST"])
 @login_required
 def eliminar_cliente(cliente_id):
-    cliente = Cliente.query.get_or_404(cliente_id)
+    try:
+        cliente = Cliente.query.get_or_404(cliente_id)
 
-    if cliente.cancelado:
-        flash(f"⚠️ El cliente {cliente.nombre} ya estaba cancelado.", "info")
+        # 🔸 Ya cancelado
+        if cliente.cancelado:
+            flash(f"⚠️ El cliente {cliente.nombre} ya estaba cancelado.", "info")
+            return redirect(url_for("app_rutas.index"))
+
+        print(f"\n🧾 Eliminando cliente {cliente.nombre}...")
+
+        # ======================================================
+        # 1️⃣ Calcular total prestado y eliminar préstamos
+        # ======================================================
+        monto_prestado = sum((p.monto or 0) for p in cliente.prestamos)
+        saldo_restante = float(monto_prestado or 0.0)
+
+        # ✅ Evitar errores de sesión lazy
+        prestamos_a_eliminar = list(cliente.prestamos)
+        for p in prestamos_a_eliminar:
+            db.session.delete(p)
+
+        # ======================================================
+        # 2️⃣ Eliminar movimientos asociados al cliente
+        # ======================================================
+        if cliente.nombre:
+            movs_previos = MovimientoCaja.query.filter(
+                MovimientoCaja.descripcion.ilike(f"%{cliente.nombre}%")
+            ).all()
+            for m in movs_previos:
+                db.session.delete(m)
+
+        # ======================================================
+        # 3️⃣ Marcar cliente como cancelado
+        # ======================================================
+        cliente.cancelado = True
+        cliente.saldo = 0.0
+
+        # ======================================================
+        # 4️⃣ Registrar reintegro (solo si había saldo)
+        # ======================================================
+        if saldo_restante > 0:
+            mov_reverso = MovimientoCaja(
+                tipo="entrada_manual",
+                monto=saldo_restante,
+                descripcion=f"Reintegro único de cliente {cliente.nombre}",
+                fecha=hora_actual(),  # ✅ UTC seguro
+            )
+            db.session.add(mov_reverso)
+
+        # ======================================================
+        # 5️⃣ Commit y actualización de liquidación
+        # ======================================================
+        db.session.commit()
+
+        # ⚡ Esta función puede ser pesada → ejecutar al final
+        actualizar_liquidacion_por_movimiento(local_date())
+
+        flash(f"✅ Cliente {cliente.nombre} eliminado correctamente.", "success")
         return redirect(url_for("app_rutas.index"))
 
-    print(f"\n🧾 Eliminando cliente {cliente.nombre}...")
+    except Exception as e:
+        db.session.rollback()
+        print(f"[ERROR eliminar_cliente] {e}")
+        flash("Ocurrió un error al eliminar el cliente.", "danger")
+        return redirect(url_for("app_rutas.index"))
 
-    monto_prestado = sum(p.monto for p in cliente.prestamos)
-    saldo_restante = float(monto_prestado or 0.0)
-
-    for p in cliente.prestamos:
-        db.session.delete(p)
-
-    movs_previos = MovimientoCaja.query.filter(
-        MovimientoCaja.descripcion.ilike(f"%{cliente.nombre}%")
-    ).all()
-    for m in movs_previos:
-        db.session.delete(m)
-
-    cliente.cancelado = True
-    cliente.saldo = 0.0
-
-    if saldo_restante > 0:
-        mov_reverso = MovimientoCaja(
-            tipo="entrada_manual",
-            monto=saldo_restante,
-            descripcion=f"Reintegro único de cliente {cliente.nombre}",
-            fecha=hora_actual(),  # ✅ UTC seguro
-        )
-        db.session.add(mov_reverso)
-
-    db.session.commit()
-    liq = actualizar_liquidacion_por_movimiento(local_date())
-
-    flash(f"✅ Cliente {cliente.nombre} eliminado correctamente.", "success")
-    return redirect(url_for("app_rutas.index"))
 
 
 # ======================================================
@@ -1081,31 +1200,107 @@ def reparar_caja():
 
 
 # ======================================================
-# 📊 LIQUIDACIÓN — DÍA ACTUAL
+# 📊 LIQUIDACIÓN — DÍA ACTUAL (CORREGIDA)
 # ======================================================
 @app_rutas.route("/liquidacion")
 @login_required
 def liquidacion_view():
-    hoy = local_date()
-    liq = Liquidacion.query.filter_by(fecha=hoy).first()
-    if not liq:
-        liq = crear_liquidacion_para_fecha(hoy)
+    try:
+        hoy = local_date()
 
-    liquidaciones = [liq]
-    resumen = obtener_resumen_total()
+        # Buscar o crear liquidación del día
+        liq = Liquidacion.query.filter_by(fecha=hoy).first()
+        if not liq:
+            liq = crear_liquidacion_para_fecha(hoy)  # debe devolver un Liquidacion persistible
 
-    total_caja = liq.caja or 0.0
-    cartera_total = resumen["cartera_total"]
+        start, end = day_range(hoy)
 
-    return render_template(
-        "liquidacion.html",
-        hoy=hoy,
-        liq=liq,
-        liquidaciones=liquidaciones,
-        total_caja=total_caja,
-        cartera_total=cartera_total,
-        resumen=resumen,
-    )
+        # 💰 Total abonos (ingresos por cuotas)
+        total_abonos = (
+            db.session.query(func.coalesce(func.sum(Abono.monto), 0.0))
+            .filter(Abono.fecha >= start, Abono.fecha < end)
+            .scalar() or 0.0
+        )
+
+        # 🏦 Total préstamos del día (desde Prestamo, consistente con Dashboard/Index)
+        total_prestamos = (
+            db.session.query(func.coalesce(func.sum(Prestamo.monto), 0.0))
+            .join(Cliente, Prestamo.cliente_id == Cliente.id)
+            .filter(
+                Cliente.cancelado == False,
+                Prestamo.fecha >= start,
+                Prestamo.fecha < end
+            )
+            .scalar() or 0.0
+        )
+
+        # 💵 Entradas manuales
+        total_entradas_caja = (
+            db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0.0))
+            .filter(
+                MovimientoCaja.tipo == "entrada_manual",
+                MovimientoCaja.fecha >= start,
+                MovimientoCaja.fecha < end
+            )
+            .scalar() or 0.0
+        )
+
+        # 💸 Salidas
+        total_salidas = (
+            db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0.0))
+            .filter(
+                MovimientoCaja.tipo == "salida",
+                MovimientoCaja.fecha >= start,
+                MovimientoCaja.fecha < end
+            )
+            .scalar() or 0.0
+        )
+
+        # 🧾 Gastos
+        total_gastos = (
+            db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0.0))
+            .filter(
+                MovimientoCaja.tipo == "gasto",
+                MovimientoCaja.fecha >= start,
+                MovimientoCaja.fecha < end
+            )
+            .scalar() or 0.0
+        )
+
+        # 💼 Caja del día (misma fórmula que Dashboard/Index)
+        total_caja = total_abonos + total_entradas_caja - (total_prestamos + total_salidas + total_gastos)
+
+        # 🔄 Actualizar objeto Liquidacion con los nombres REALES de columnas
+        #    (según usas en /liquidaciones y en tus plantillas)
+        liq.entradas       = total_abonos        # 👈 antes ponías liq.abonos (NO existe)
+        liq.prestamos_hoy  = total_prestamos
+        liq.entradas_caja  = total_entradas_caja
+        liq.salidas        = total_salidas
+        liq.gastos         = total_gastos
+        liq.caja           = total_caja
+
+        db.session.add(liq)
+        db.session.commit()
+
+        # 📊 Resumen general
+        resumen = obtener_resumen_total()
+        cartera_total = resumen.get("cartera_total", 0.0)
+
+        return render_template(
+            "liquidacion.html",
+            hoy=hoy,
+            liq=liq,
+            liquidaciones=[liq],
+            total_caja=total_caja,
+            cartera_total=cartera_total,
+            resumen=resumen,
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"[ERROR liquidacion_view] {e}")
+        flash("❌ Error al calcular la liquidación del día.", "danger")
+        return redirect(url_for("app_rutas.index"))
 
 
 # ======================================================
