@@ -33,8 +33,7 @@
       <th>Último Abono</th>
       <th>Abonar</th>
       <th>Saldo</th>
-      <th>Editar</th>
-      <th>Eliminar</th>
+      <th>Eliminar</th>  <!-- 👈 solo esta -->
     </tr>
   </thead>
   <tbody>
@@ -44,7 +43,7 @@
 
       <tr id="cliente-{{ c.id }}"
           class="fila-cliente
-            {% if u and (u.frecuencia or 'diario') == 'mensual' and dias_desde >= 30 and not c.cancelado %}interes-vencido {% endif %}
+            {% if u and (u.frecuencia or 'diario') == 'mensual' and dias_desde >= 30 and not c.cancelado %}interes-vencido{% endif %}
             {% if c.cancelado %}cancelado{% elif c.estado_plazo == 'vencido' %}plazo-vencido{% elif c.estado_plazo == 'moroso' %}plazo-moroso{% endif %}
           ">
 
@@ -111,9 +110,9 @@
           {% endif %}
         </td>
 
-        <!-- ELIMINAR CLIENTE -->
+        <!-- ELIMINAR (ahora funciona como editar) -->
         <td>
-          <button class="btn btn-danger btn-sm eliminar-cliente-btn"
+          <button class="btn btn-danger btn-sm editar-btn"
                   data-id="{{ c.id }}"
                   data-nombre="{{ c.nombre }}">
             🗑️ Eliminar
