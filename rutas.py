@@ -754,7 +754,7 @@ def actualizar_orden(cliente_id):
 
 
 # ======================================================
-# ❌ ELIMINAR CLIENTE — VERSIÓN FINAL (compatible con Fetch y lógica completa)
+# ❌ ELIMINAR CLIENTE — VERSIÓN FINAL (prestamo_revertido + capital real)
 # ======================================================
 @app_rutas.route("/eliminar_cliente/<int:cliente_id>", methods=["POST"])
 @login_required
@@ -773,17 +773,21 @@ def eliminar_cliente(cliente_id):
         print(f"\n🧾 Eliminando cliente {cliente.nombre}...")
 
         # ------------------------------------------------------
-        # 1️⃣ Calcular total prestado y eliminar préstamos
+        # 1️⃣ Calcular CAPITAL pendiente REAL (sin intereses)
         # ------------------------------------------------------
-        monto_prestado = sum((p.monto or 0) for p in cliente.prestamos)
-        saldo_restante = float(monto_prestado or 0.0)
+        capital_total = sum((p.monto or 0) for p in cliente.prestamos)
+        total_abonos = sum((a.monto or 0) for p in cliente.prestamos for a in p.abonos)
+        capital_pendiente = capital_total - total_abonos
 
+        # ------------------------------------------------------
+        # 2️⃣ Eliminar préstamos y abonos asociados
+        # ------------------------------------------------------
         prestamos_a_eliminar = list(cliente.prestamos)
         for p in prestamos_a_eliminar:
             db.session.delete(p)
 
         # ------------------------------------------------------
-        # 2️⃣ Eliminar movimientos de caja relacionados
+        # 3️⃣ Eliminar movimientos de caja relacionados anteriores
         # ------------------------------------------------------
         if cliente.nombre:
             movs_previos = MovimientoCaja.query.filter(
@@ -793,31 +797,31 @@ def eliminar_cliente(cliente_id):
                 db.session.delete(m)
 
         # ------------------------------------------------------
-        # 3️⃣ Marcar cliente como cancelado
+        # 4️⃣ Marcar cliente como cancelado
         # ------------------------------------------------------
         cliente.cancelado = True
         cliente.saldo = 0.0
 
         # ------------------------------------------------------
-        # 4️⃣ Registrar reintegro (si había saldo)
+        # 5️⃣ Registrar REINTEGRO a caja SOLO del capital pendiente
         # ------------------------------------------------------
-        if saldo_restante > 0:
+        if capital_pendiente > 0:
             mov_reverso = MovimientoCaja(
-                tipo="entrada_manual",
-                monto=saldo_restante,
-                descripcion=f"💵 Reintegro único del cliente {cliente.nombre}",
+                tipo="prestamo_revertido",
+                monto=capital_pendiente,
+                descripcion=f"♻️ Reversión de capital del cliente {cliente.nombre}",
                 fecha=hora_actual(),
             )
             db.session.add(mov_reverso)
 
         # ------------------------------------------------------
-        # 5️⃣ Guardar cambios
+        # 6️⃣ Guardar cambios
         # ------------------------------------------------------
         db.session.commit()
         actualizar_liquidacion_por_movimiento(local_date())
 
         # ------------------------------------------------------
-        # 6️⃣ Respuesta flexible (HTML o AJAX)
+        # 7️⃣ Respuesta flexible (HTML o AJAX)
         # ------------------------------------------------------
         msg_ok = f"🗑️ Cliente {cliente.nombre} eliminado correctamente."
         if request.headers.get("X-Requested-With") == "fetch":
