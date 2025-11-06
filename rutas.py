@@ -314,24 +314,24 @@ def logout():
     return redirect(url_for("app_rutas.login"))
 
 # ======================================================
-# 🧍‍♂️ NUEVO CLIENTE — CREACIÓN Y RENOVACIÓN (versión FIX BUG Código)
+# 🧍‍♂️ NUEVO CLIENTE — CREACIÓN Y RENOVACIÓN (versión FINAL OPTIMIZADA — commit controlado)
 # ======================================================
 @app_rutas.route("/nuevo_cliente", methods=["GET", "POST"])
 @login_required
 def nuevo_cliente():
     """
     Crea un cliente nuevo o renueva uno cancelado sin eliminar su historial.
-    - Si el código NO existe → ERROR (no crear)
-    - Si existe y está cancelado → se RENUEVA manteniendo nombre/dirección históricos
-    - Si existe y está activo → error (no crear ni duplicar)
+    - Si no existe → se crea normalmente.
+    - Si existe y está cancelado → se CREA UN NUEVO REGISTRO ACTIVO (el viejo queda en cancelados).
+    - Si existe y está activo → advertencia.
     """
     from datetime import timedelta
 
     if request.method == "POST":
         try:
-            # -------------------------
-            # Datos básicos del form
-            # -------------------------
+            # ------------------------------------------------------
+            # 🧾 Captura de datos del formulario
+            # ------------------------------------------------------
             nombre = (request.form.get("nombre") or "").strip()
             codigo = (request.form.get("codigo") or "").strip()
             direccion = (request.form.get("direccion") or "").strip()
@@ -353,38 +353,18 @@ def nuevo_cliente():
             hoy = local_date()
             cliente = Cliente.query.filter_by(codigo=codigo).first()
 
-            # ============================
-            # CASO: Código NO existe -> ERROR
-            # ============================
-            if cliente is None:
-                flash("Error. Este código no existe.", "danger")
-                return redirect(url_for("app_rutas.nuevo_cliente"))
-
-            # ============================
-            # CASO: cliente activo -> ERROR (no duplicar)
-            # ============================
-            if cliente and not cliente.cancelado:
-                flash("Ese código ya pertenece a un cliente activo.", "warning")
-                return redirect(url_for("app_rutas.nuevo_cliente"))
-
-            # ============================
-            # CASO: Renovación cliente cancelado
-            # ============================
+            # ======================================================
+            # 🔁 Renovación de cliente cancelado
+            # ======================================================
             if cliente and cliente.cancelado:
-                # aquí NO usamos nombre del form
-                # usamos el nombre histórico REAL del cliente
-                nombre_real = cliente.nombre or codigo
-                direccion_real = cliente.direccion or ""
-                telefono_real = cliente.telefono or ""
-
                 nuevo = Cliente(
-                    nombre=nombre_real,
+                    nombre=cliente.nombre,
                     codigo=cliente.codigo,
-                    direccion=direccion_real,
-                    telefono=telefono_real,
+                    direccion=direccion or cliente.direccion or "",
+                    telefono=telefono or cliente.telefono or "",
                     orden=orden or cliente.orden or 0,
                     fecha_creacion=hoy,
-                    ultimo_abono_fecha=cliente.ultimo_abono_fecha, # NO tocamos histórico
+                    ultimo_abono_fecha=None,
                     saldo=0.0,
                     cancelado=False,
                 )
@@ -411,8 +391,10 @@ def nuevo_cliente():
                     nuevo.saldo = saldo_total
                     db.session.add_all([prestamo, mov])
 
+                cliente.ultimo_abono_fecha = cliente.ultimo_abono_fecha or hora_actual()
                 db.session.commit()
 
+                # ✅ Recalcular sin duplicar commits
                 if monto > 0:
                     actualizar_liquidacion_por_movimiento(hoy, commit=False)
                     db.session.commit()
@@ -420,15 +402,67 @@ def nuevo_cliente():
                 flash(f"Cliente {nuevo.nombre} renovado correctamente (histórico preservado).", "success")
                 return redirect(url_for("app_rutas.index", focus_abono=nuevo.id))
 
+            # ======================================================
+            # 🚫 Cliente activo existente
+            # ======================================================
+            if cliente and not cliente.cancelado:
+                flash("Ese código ya pertenece a un cliente activo.", "warning")
+                return redirect(url_for("app_rutas.nuevo_cliente"))
+
+            # ======================================================
+            # 🧍‍♂️ Nuevo cliente (no existe)
+            # ======================================================
+            nuevo = Cliente(
+                nombre=nombre or codigo,
+                codigo=codigo,
+                direccion=direccion or "",
+                telefono=telefono or "",
+                orden=orden,
+                fecha_creacion=hoy,
+                cancelado=False,
+            )
+            db.session.add(nuevo)
+            db.session.flush()
+
+            if monto > 0:
+                saldo_total = monto + (monto * (interes / 100.0))
+                prestamo = Prestamo(
+                    cliente_id=nuevo.id,
+                    monto=monto,
+                    saldo=saldo_total,
+                    fecha=hoy,
+                    interes=interes,
+                    plazo=plazo,
+                    frecuencia=frecuencia,
+                )
+                mov = MovimientoCaja(
+                    tipo="prestamo",
+                    monto=monto,
+                    descripcion=f"Préstamo inicial a {nuevo.nombre}",
+                    fecha=hora_actual(),
+                )
+                nuevo.saldo = saldo_total
+                db.session.add_all([prestamo, mov])
+
+            db.session.commit()
+
+            # ✅ Recalcular liquidación sin segundo commit redundante
+            if monto > 0:
+                actualizar_liquidacion_por_movimiento(hoy, commit=False)
+                db.session.commit()
+
+            flash(f"Cliente {nuevo.nombre} creado correctamente.", "success")
+            return redirect(url_for("app_rutas.index", focus_abono=nuevo.id))
+
         except Exception as e:
             db.session.rollback()
             print(f"[ERROR nuevo_cliente] {e}")
             flash("Ocurrió un error inesperado al crear o renovar el cliente.", "danger")
             return redirect(url_for("app_rutas.nuevo_cliente"))
 
-    # ----------------------
-    # GET
-    # ----------------------
+    # ------------------------------------------------------
+    # 📋 GET — Mostrar formulario
+    # ------------------------------------------------------
     try:
         codigo_sugerido = generar_codigo_cliente()
     except Exception:
