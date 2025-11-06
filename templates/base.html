@@ -77,7 +77,6 @@
     const toast = document.getElementById("toastProcesando");
     let visible = false;
 
-    // ==================== FUNCIONES GLOBALES ====================
     function mostrarProcesando() {
       if (visible) return;
       visible = true;
@@ -94,7 +93,6 @@
     window.mostrarProcesando = mostrarProcesando;
     window.ocultarProcesando = ocultarProcesando;
 
-    // ==================== FORMULARIOS ====================
     document.querySelectorAll("form").forEach(form => {
       form.addEventListener("submit", () => {
         mostrarProcesando();
@@ -102,7 +100,6 @@
       });
     });
 
-    // ==================== ENLACES ====================
     document.querySelectorAll("a[href]").forEach(link => {
       const href = link.getAttribute("href");
       if (!href || href.startsWith("#") || href.startsWith("javascript:") || link.target === "_blank") return;
@@ -112,7 +109,6 @@
       });
     });
 
-    // ==================== MODAL NUEVO CLIENTE ====================
     const modalNuevoCliente = new bootstrap.Modal(document.getElementById("modalNuevoCliente"));
     const modalBody = document.getElementById("modalNuevoClienteBody");
     const btnNuevoCliente = document.getElementById("btnNuevoCliente");
@@ -141,9 +137,21 @@
       }
     });
 
-    // Ocultar al cargar la página
     window.addEventListener("load", ocultarProcesando);
   });
   </script>
+
+  <!-- 🕒 Reloj dinámico Chile -->
+  <script>
+    function actualizarRelojChile() {
+      const opciones = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+      const ahoraChile = new Date().toLocaleTimeString('es-CL', opciones);
+      const elemento = document.getElementById('horaChile');
+      if (elemento) elemento.textContent = ahoraChile;
+    }
+    setInterval(actualizarRelojChile, 1000);
+    actualizarRelojChile();
+  </script>
+
 </body>
 </html>
