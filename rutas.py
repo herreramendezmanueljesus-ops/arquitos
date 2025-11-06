@@ -575,10 +575,8 @@ def limpiar_cancelados():
 
     return redirect(url_for("app_rutas.clientes_cancelados_view"))
 
-
-
 # ======================================================
-# 🔁 REACTIVAR CLIENTE DESDE CANCELADOS (versión FINAL — histórico preservado y estructura original + corrección ORM)
+# 🔁 REACTIVAR CLIENTE DESDE CANCELADOS (versión FINAL ✅ corregida)
 # ======================================================
 @app_rutas.route("/reactivar_cliente/<int:cliente_id>", methods=["POST"])
 @login_required
@@ -606,8 +604,15 @@ def reactivar_cliente(cliente_id):
     # ======================================================
     # 💾 1.5️⃣ Asegurar que el antiguo quede guardado como histórico
     # ======================================================
+    # Guardar los valores antes de hacer commit (para evitar DetachedInstanceError)
+    codigo_old = cliente_antiguo.codigo
+    orden_old = cliente_antiguo.orden or 1
+    nombre_old = cliente_antiguo.nombre
+    direccion_old = cliente_antiguo.direccion
+
     cliente_antiguo.cancelado = True
     cliente_antiguo.ultimo_abono_fecha = hora_actual()
+
     db.session.commit()  # 🧩 Guardamos antes de crear el nuevo
     db.session.expunge(cliente_antiguo)  # 🔒 Lo sacamos de la sesión actual
 
@@ -615,13 +620,10 @@ def reactivar_cliente(cliente_id):
     # 🧩 2️⃣ Crear nuevo cliente activo (manteniendo el antiguo como histórico)
     # ======================================================
     nuevo_cliente = Cliente(
-        codigo=cliente_antiguo.codigo,
-        orden=cliente_antiguo.orden or 1,
-        nombre=cliente_antiguo.nombre,
-        direccion=cliente_antiguo.direccion,
-        monto=0.0,
-        plazo=0,
-        interes=0.0,
+        codigo=codigo_old,
+        orden=orden_old,
+        nombre=nombre_old,
+        direccion=direccion_old,
         saldo=0.0,
         fecha_creacion=local_date(),
         ultimo_abono_fecha=None,
@@ -689,8 +691,6 @@ def reactivar_cliente(cliente_id):
 
     flash(f"🟢 Cliente {nuevo_cliente.nombre} renovado correctamente.", "success")
     return redirect(url_for("app_rutas.index"))
-
-
 
 # ======================================================
 # ✏️ ACTUALIZAR ORDEN DE CLIENTE — con desplazamiento automático
@@ -1102,20 +1102,29 @@ def registrar_abono_por_codigo():
     flash(f"💰 Abono de ${monto:.2f} registrado para {cliente.nombre}", "success")
     if cancelado:
         flash(f"✅ {cliente.nombre} quedó en saldo 0 y fue movido a cancelados.", "info")
-    return redirect(url_for("app_rutas.index"))
+    return redirect(url_for("app_rutas.index")) 
 
 # ======================================================
-# 🗑️ ELIMINAR ABONO
+# 🗑️ ELIMINAR ABONO (reactiva y recalcula caja histórica)
 # ======================================================
 @app_rutas.route("/eliminar_abono/<int:abono_id>", methods=["POST"])
 @login_required
 def eliminar_abono(abono_id):
+    from sqlalchemy import func
     try:
         abono = Abono.query.get_or_404(abono_id)
         prestamo = abono.prestamo
         cliente = prestamo.cliente
 
-        prestamo.saldo = (prestamo.saldo or 0) + (abono.monto or 0)
+        # 🗓️ Guardar la fecha original del abono (zona Chile ya normalizada en tu modelo)
+        fecha_abono_dt = abono.fecha
+        fecha_abono = fecha_abono_dt.date() if hasattr(fecha_abono_dt, "date") else local_date()
+
+        # 🔁 Devolver el monto al saldo del préstamo
+        prestamo.saldo = float(prestamo.saldo or 0) + float(abono.monto or 0)
+
+        # 🗑️ Borrar el abono y recalcular saldo del cliente
+        monto_borrado = float(abono.monto or 0)
         db.session.delete(abono)
         db.session.flush()
 
@@ -1125,23 +1134,44 @@ def eliminar_abono(abono_id):
             .scalar()
             or 0.0
         )
-        cliente.saldo = total_saldo_cliente
+        cliente.saldo = float(total_saldo_cliente)
 
+        # 🔄 Si estaba cancelado y ahora vuelve a deber → reactivar
+        reactivado = False
         if cliente.cancelado and round(cliente.saldo, 2) > 0:
             cliente.cancelado = False
+            # Usamos fecha local (solo fecha) para "volver a estar activo hoy"
+            cliente.ultimo_abono_fecha = local_date()
+            reactivado = True
 
-        actualizar_liquidacion_por_movimiento(local_date())
         db.session.commit()
 
+        # 📅 Recalcular liquidaciones desde la fecha del abono hasta hoy (propaga el cambio)
+        def _recalc_desde(fecha_inicio):
+            d = fecha_inicio
+            hoy = local_date()
+            while d <= hoy:
+                actualizar_liquidacion_por_movimiento(d, commit=True)
+                d = d + timedelta(days=1)
+
+        _recalc_desde(fecha_abono)
+
+        # ✅ Respuesta AJAX
         if request.headers.get("X-Requested-With") == "fetch":
             return jsonify({
                 "ok": True,
                 "cliente_id": cliente.id,
                 "saldo": float(cliente.saldo),
                 "cancelado": cliente.cancelado,
+                "reactivado": reactivado,
+                "monto_borrado": monto_borrado
             }), 200
 
-        flash(f"🗑️ Abono de ${abono.monto:.2f} eliminado correctamente.", "info")
+        # Navegador normal
+        flash(f"🗑️ Abono de ${monto_borrado:.2f} eliminado correctamente.", "info")
+        if reactivado:
+            flash(f"🔁 {cliente.nombre} fue reactivado.", "success")
+            return redirect(url_for("app_rutas.index", resaltar=cliente.id))
         return redirect(url_for("app_rutas.index"))
 
     except Exception as e:
@@ -1150,6 +1180,7 @@ def eliminar_abono(abono_id):
             return jsonify({"ok": False, "error": str(e)}), 500
         flash("❌ Error interno al eliminar abono.", "danger")
         return redirect(url_for("app_rutas.index"))
+
 
 # ======================================================
 # 💼 CAJA — MOVIMIENTO GENÉRICO (entrada_manual / salida / gasto)

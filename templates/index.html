@@ -42,7 +42,7 @@
       {% set u = (c.prestamos|sort(attribute='fecha'))|last if c.prestamos else None %}
       {% set dias_desde = (hoy - u.fecha).days if u and u.fecha else 0 %}
 
-      <tr id="cliente-{{ c.id }}"
+      <tr id="cliente-row-{{ c.id }}"
           class="fila-cliente
             {% if u and (u.frecuencia or 'diario') == 'mensual' and dias_desde >= 30 and not c.cancelado %}interes-vencido{% endif %}
             {% if c.cancelado %}cancelado{% elif c.estado_plazo == 'vencido' %}plazo-vencido{% elif c.estado_plazo == 'moroso' %}plazo-moroso{% endif %}
@@ -267,7 +267,7 @@ forms.forEach(form => {
 
       // 💡 Si se aplicó un interés mensual, mostrar aviso visual
       if (data.interes_aplicado) {
-        const fila = document.getElementById(`cliente-${data.cliente_id}`);
+        const fila = document.getElementById(`cliente-row-${data.cliente_id}`);
         if (fila) {
           fila.classList.remove("interes-vencido");
 
@@ -300,7 +300,7 @@ forms.forEach(form => {
       input.classList.add("bg-success", "text-white");
 
       const saldoElem = document.querySelector(`.saldo-texto[data-cliente-id="${data.cliente_id}"]`);
-      const fila = document.getElementById(`cliente-${data.cliente_id}`);
+      const fila = document.getElementById(`cliente-row-${data.cliente_id}`);
 
       if (data.cancelado) {
         // 💥 Si quedó cancelado, animar y eliminar fila
@@ -452,6 +452,15 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>
 
+{% if request.args.get("resaltar") %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const id = "{{ request.args.get('resaltar') }}";
+    resaltarClienteReactivado(id);
+});
+</script>
+{% endif %}
+
 <!-- =================== ESTILOS =================== -->
 <style>
 /* 🚫 Cliente cancelado */
@@ -513,7 +522,7 @@ document.addEventListener("DOMContentLoaded", function() {
 {% if resaltado_id %}
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-  const fila = document.querySelector(`#cliente-{{ resaltado_id }}`);
+  const fila = document.querySelector(`#cliente-row-{{ resaltado_id }}`);
   if (fila) {
     fila.scrollIntoView({ behavior: "smooth", block: "center" });
     setTimeout(() => {
@@ -554,7 +563,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         // 💨 Desvanecer fila eliminada
-        const fila = document.getElementById(`cliente-${id}`);
+        const fila = document.getElementById(`cliente-row-${id}`);
         if (fila) {
           fila.style.transition = "opacity 0.5s ease, transform 0.5s ease";
           fila.style.opacity = "0";
