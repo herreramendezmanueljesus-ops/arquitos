@@ -992,8 +992,9 @@ def historial_abonos_json(cliente_id):
         "abonos": data_abonos
     })
 
+
 # ======================================================
-# 💰 REGISTRAR ABONO POR CÓDIGO (versión 100% estable y sin "procesando...")
+# 💰 REGISTRAR ABONO POR CÓDIGO (versión estable, permite abonar cancelados)
 # ======================================================
 @app_rutas.route("/registrar_abono_por_codigo", methods=["POST"])
 @login_required
@@ -1019,12 +1020,8 @@ def registrar_abono_por_codigo():
             flash(msg, "danger"), redirect(url_for("app_rutas.index"))
         )[1]
 
-    # 🚫 Cancelado
-    if cliente.cancelado:
-        msg = f"No se puede abonar. {cliente.nombre} está cancelado."
-        return (jsonify({"ok": False, "error": msg}), 400) if es_fetch else (
-            flash(msg, "warning"), redirect(url_for("app_rutas.index"))
-        )[1]
+    # 👇 YA NO BLOQUEAMOS POR CANCELADO
+    # antes aquí estaba el error
 
     # 🔎 Buscar préstamo activo
     prestamo = (
@@ -1078,10 +1075,17 @@ def registrar_abono_por_codigo():
     cliente.ultimo_abono_fecha = local_date()
 
     cancelado = False
-    if round(cliente.saldo, 2) <= 0:
+    saldo_redondeado = round(cliente.saldo, 2)
+
+    # si queda en 0 ⇒ cancelar
+    if saldo_redondeado <= 0:
         cliente.saldo = 0.0
         cliente.cancelado = True
         cancelado = True
+    else:
+        # si estaba cancelado y vuelve a tener saldo ⇒ reactivar
+        if cliente.cancelado:
+            cliente.cancelado = False
 
     db.session.commit()
     actualizar_liquidacion_por_movimiento(local_date())
@@ -1102,7 +1106,8 @@ def registrar_abono_por_codigo():
     flash(f"💰 Abono de ${monto:.2f} registrado para {cliente.nombre}", "success")
     if cancelado:
         flash(f"✅ {cliente.nombre} quedó en saldo 0 y fue movido a cancelados.", "info")
-    return redirect(url_for("app_rutas.index")) 
+    return redirect(url_for("app_rutas.index"))
+
 
 # ======================================================
 # 🗑️ ELIMINAR ABONO (reactiva y recalcula caja histórica)
