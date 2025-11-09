@@ -702,56 +702,38 @@ def actualizar_orden(cliente_id):
 
     nueva_orden = request.form.get("orden", type=int)
     if not nueva_orden or nueva_orden < 1:
-        flash("Debe ingresar un número de orden válido (>= 1).", "warning")
-        return redirect(url_for("app_rutas.index"))
+        return jsonify({"ok": False, "error": "orden inválida"}), 400
 
     cliente = Cliente.query.get_or_404(cliente_id)
-    orden_actual = cliente.orden or 9999  # si no tenía, lo tratamos como muy alto
+    orden_actual = cliente.orden or 9999
 
     if nueva_orden == orden_actual:
-        flash(f"El cliente {cliente.nombre} ya tiene el orden {nueva_orden}.", "info")
-        return redirect(url_for("app_rutas.index"))
+        return jsonify({"ok": True, "msg": "orden igual"}), 200
 
     try:
-        # 📊 Si el nuevo orden es menor → el cliente sube y los demás bajan
         if nueva_orden < orden_actual:
-            (
-                Cliente.query
-                .filter(
-                    Cliente.id != cliente.id,
-                    Cliente.cancelado == False,
-                    Cliente.orden >= nueva_orden,
-                    Cliente.orden < orden_actual
-                )
-                .update({Cliente.orden: Cliente.orden + 1}, synchronize_session=False)
-            )
+            Cliente.query.filter(
+                Cliente.id != cliente.id,
+                Cliente.cancelado == False,
+                Cliente.orden >= nueva_orden,
+                Cliente.orden < orden_actual
+            ).update({Cliente.orden: Cliente.orden + 1}, synchronize_session=False)
         else:
-            # 📉 Si el nuevo orden es mayor → el cliente baja y los demás suben
-            (
-                Cliente.query
-                .filter(
-                    Cliente.id != cliente.id,
-                    Cliente.cancelado == False,
-                    Cliente.orden <= nueva_orden,
-                    Cliente.orden > orden_actual
-                )
-                .update({Cliente.orden: Cliente.orden - 1}, synchronize_session=False)
-            )
+            Cliente.query.filter(
+                Cliente.id != cliente.id,
+                Cliente.cancelado == False,
+                Cliente.orden <= nueva_orden,
+                Cliente.orden > orden_actual
+            ).update({Cliente.orden: Cliente.orden - 1}, synchronize_session=False)
 
-        # ✅ Asignar el nuevo orden al cliente
         cliente.orden = nueva_orden
         db.session.commit()
 
-        flash(f"✅ Orden del cliente {cliente.nombre} actualizada a {nueva_orden}.", "success")
+        return jsonify({"ok": True})
 
     except Exception as e:
         db.session.rollback()
-        flash("❌ Error al actualizar el orden.", "danger")
-        print("[ERROR actualizar_orden]", e)
-
-    return redirect(url_for("app_rutas.index"))
-
-
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 # ======================================================
 # ❌ ELIMINAR CLIENTE — VERSIÓN FINAL (prestamo_revertido + capital real)

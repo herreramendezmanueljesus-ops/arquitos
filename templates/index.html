@@ -49,12 +49,14 @@
           ">
 
         <!-- ORDEN -->
-        <td style="width:100px;">
-          <form action="{{ url_for('app_rutas.actualizar_orden', cliente_id=c.id) }}" method="post" class="d-flex actualizar-orden-form">
-            <input type="number" name="orden" value="{{ c.orden }}" class="form-control text-center" style="width:70px;" {% if c.cancelado %}disabled{% endif %}>
-            <button type="submit" class="btn btn-outline-primary ms-1 btn-sm" {% if c.cancelado %}disabled{% endif %}>✔</button>
-          </form>
-        </td>
+<td style="width:100px;">
+  <input type="number"
+         class="form-control text-center orden-input"
+         value="{{ c.orden }}"
+         data-id="{{ c.id }}"
+         style="width:70px;"
+         {% if c.cancelado %}disabled{% endif %}>
+</td>
 
         <!-- DATOS PRINCIPALES -->
         <td>{{ c.codigo }}</td>
@@ -582,6 +584,31 @@ document.addEventListener("DOMContentLoaded", () => {
       } catch (err) {
         alert("❌ Error al eliminar el cliente.");
         console.error(err);
+      }
+    });
+  });
+});
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll(".orden-input").forEach(input => {
+    input.addEventListener("change", async () => {
+      const id = input.dataset.id;
+      const value = input.value;
+
+      const res = await fetch(`/actualizar_orden/${id}`, {
+        method: "POST",
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: `orden=${value}`
+      });
+
+      const data = await res.json();
+
+      if (data.ok) {
+        location.reload(); // por ahora refresco rápido (luego hacemos animación sin reload)
+      } else {
+        alert("❌ Error al actualizar el orden");
       }
     });
   });
