@@ -590,32 +590,187 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 </script>
 
+<style>
+/* 🔧 Estilos drag & drop */
+.drag-handle {
+  cursor: grab;
+  user-select: none;
+  font-size: 1.1rem;
+}
+tr.dragging {
+  opacity: 0.6;
+}
+tr.drop-target {
+  outline: 2px dashed #0d6efd;
+}
+</style>
+
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-  document.querySelectorAll(".orden-input").forEach(input => {
+  const tbody = document.querySelector("#tabla-clientes tbody");
+  if (!tbody) return;
 
-    input.addEventListener("change", async () => {
-      const id = input.dataset.id;
-      const value = input.value;
+  // ========= UTILIDADES =========
+  const filaPorEvento = (e) => e.target.closest("tr.fila-cliente");
+  const getOrdenInput = (tr) => tr.querySelector(".orden-input");
+  const getClienteId = (tr) => tr.id.replace("cliente-row-", "");
+  const filas = () => Array.from(tbody.querySelectorAll("tr.fila-cliente"));
+  const esCancelado = (tr) => tr.classList.contains("cancelado");
 
+  // Re-numera visualmente los inputs de orden (1..n)
+  function renumerarVisual() {
+    filas().forEach((tr, i) => {
+      const inp = getOrdenInput(tr);
+      if (inp) inp.value = i + 1;
+    });
+  }
+
+  // Mueve en el DOM la fila desde un índice a otro (optimista)
+  function moverFilaDom(idxFrom, idxTo) {
+    const arr = filas();
+    const row = arr[idxFrom];
+    const ref = arr[idxTo];
+    if (!row || !ref || row === ref) return;
+    if (idxTo > idxFrom) {
+      // insertar después
+      ref.after(row);
+    } else {
+      // insertar antes
+      ref.before(row);
+    }
+    renumerarVisual();
+  }
+
+  // ========= DRAG & DROP =========
+  let draggingRow = null;
+
+  // Añade manija y atributos a cada fila (excepto cancelados)
+  filas().forEach(tr => {
+    if (esCancelado(tr)) return;
+    tr.setAttribute("draggable", "true");
+    // Si no tiene manija, la creamos en la celda de orden
+    const ordenTd = tr.querySelector("td:first-child");
+    if (ordenTd && !ordenTd.querySelector(".drag-handle")) {
+      const handle = document.createElement("span");
+      handle.className = "drag-handle ms-1";
+      handle.title = "Arrastra para reordenar";
+      handle.textContent = "⋮⋮";
+      ordenTd.prepend(handle);
+    }
+  });
+
+  tbody.addEventListener("dragstart", (e) => {
+    const tr = filaPorEvento(e);
+    if (!tr || esCancelado(tr)) return;
+    draggingRow = tr;
+    tr.classList.add("dragging");
+    // mejora UX: imagen transparente
+    const img = new Image(); img.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAUEBA==";
+    e.dataTransfer.setDragImage(img, 0, 0);
+  });
+
+  tbody.addEventListener("dragover", (e) => {
+    if (!draggingRow) return;
+    e.preventDefault();
+    const over = filaPorEvento(e);
+    filas().forEach(r => r.classList.remove("drop-target"));
+    if (over && over !== draggingRow) over.classList.add("drop-target");
+  });
+
+  tbody.addEventListener("dragleave", (e) => {
+    const tr = filaPorEvento(e);
+    if (tr) tr.classList.remove("drop-target");
+  });
+
+  tbody.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    const target = filaPorEvento(e);
+    filas().forEach(r => r.classList.remove("drop-target"));
+    if (!draggingRow || !target || draggingRow === target) {
+      if (draggingRow) draggingRow.classList.remove("dragging");
+      draggingRow = null;
+      return;
+    }
+
+    // Índices actuales
+    const arr = filas();
+    const fromIdx = arr.indexOf(draggingRow);
+    const toIdx = arr.indexOf(target);
+
+    // Optimista: mover en DOM y renumerar inputs
+    moverFilaDom(fromIdx, toIdx);
+
+    // Enviar al backend: nueva posición (1-based)
+    const id = getClienteId(draggingRow);
+    const nuevaPos = arr.indexOf(target) === -1
+      ? toIdx + 1
+      : filas().indexOf(draggingRow) + 1; // tras mover, recalcula
+
+    try {
       const res = await fetch(`/actualizar_orden/${id}`, {
         method: "POST",
         headers: {"Content-Type": "application/x-www-form-urlencoded"},
-        body: `orden=${value}`
+        body: `orden=${nuevaPos}`
       });
+      const txt = await res.text();
 
-      const data = await res.text(); // ← ahora recibimos texto, no JSON
+      if (txt !== "OK") {
+        // Revertir (si el backend no aceptó)
+        // Simplemente recargamos para recuperar estado real
+        alert("❌ No se pudo guardar el nuevo orden. Se recargará la página.");
+        location.reload();
+      }
+    } catch (err) {
+      alert("❌ Error de conexión guardando el nuevo orden. Se recargará la página.");
+      location.reload();
+    } finally {
+      if (draggingRow) draggingRow.classList.remove("dragging");
+      draggingRow = null;
+    }
+  });
 
-      if (data === "OK") {
-        location.reload(); // ✅ ahora sí recarga correctamente
-      } else {
-        alert("❌ Error al actualizar el orden");
+  tbody.addEventListener("dragend", () => {
+    if (draggingRow) draggingRow.classList.remove("dragging");
+    draggingRow = null;
+  });
+
+  // ========= ENTER en input de orden (sin recargar) =========
+  document.querySelectorAll(".orden-input").forEach(input => {
+    input.addEventListener("keydown", async (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+
+      const tr = input.closest("tr.fila-cliente");
+      if (!tr) return;
+
+      const id = input.dataset.id;
+      const nuevaPos = parseInt(input.value || "0", 10);
+      if (!nuevaPos || nuevaPos < 1) return alert("Orden inválido.");
+
+      // Optimista: mover DOM localmente
+      const arr = filas();
+      const fromIdx = arr.indexOf(tr);
+      const toIdx = Math.min(Math.max(nuevaPos - 1, 0), arr.length - 1);
+      moverFilaDom(fromIdx, toIdx);
+
+      try {
+        const res = await fetch(`/actualizar_orden/${id}`, {
+          method: "POST",
+          headers: {"Content-Type": "application/x-www-form-urlencoded"},
+          body: `orden=${nuevaPos}`
+        });
+        const txt = await res.text();
+        if (txt !== "OK") {
+          alert("❌ No se pudo guardar el nuevo orden. Se recargará la página.");
+          location.reload();
+        }
+      } catch (err) {
+        alert("❌ Error de conexión guardando el nuevo orden. Se recargará la página.");
+        location.reload();
       }
     });
-
   });
 });
 </script>
-
 
 {% endblock %}

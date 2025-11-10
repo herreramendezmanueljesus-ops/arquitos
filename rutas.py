@@ -151,7 +151,10 @@ _cache_resumen = {"fecha": None, "data": None, "timestamp": 0}
 @app_rutas.route("/")
 @login_required
 def index():
-    """Lista de clientes activos y resumen financiero del día (optimizado con caché)."""
+    from helpers import eliminar_cache_resumen_hoy
+    
+    # ✅ muy importante para evitar comportamiento raro al mover orden
+    eliminar_cache_resumen_hoy()
 
     hoy = local_date()
 
@@ -247,50 +250,6 @@ def index():
         caja_total=resumen_hoy["caja_total"],
     )
 
-
-# ======================================================
-# ✏️ EDITAR PRÉSTAMO — (GET/POST)
-# ======================================================
-@app_rutas.route("/editar_prestamo/<int:cliente_id>", methods=["GET", "POST"])
-def editar_prestamo(cliente_id):
-    cliente = Cliente.query.get_or_404(cliente_id)
-    prestamo = max(cliente.prestamos, key=lambda p: p.fecha) if cliente.prestamos else None
-
-    # 📤 GET — devolver datos actuales
-    if request.method == "GET":
-        if not prestamo:
-            return jsonify({"ok": False, "error": "El cliente no tiene préstamo activo."})
-        return jsonify({
-            "ok": True,
-            "data": {
-                "monto": prestamo.monto,
-                "interes": prestamo.interes,
-                "plazo": prestamo.plazo,
-                "frecuencia": prestamo.frecuencia
-            }
-        })
-
-    # 📥 POST — actualizar préstamo
-    try:
-        if not prestamo:
-            return jsonify({"ok": False, "error": "No hay préstamo asociado a este cliente."})
-
-        prestamo.monto = float(request.form.get("monto", prestamo.monto))
-        prestamo.interes = float(request.form.get("interes", prestamo.interes))
-        prestamo.plazo = int(request.form.get("plazo", prestamo.plazo))
-        prestamo.frecuencia = request.form.get("frecuencia", prestamo.frecuencia)
-
-        # Mantener saldo si ya tiene abonos
-        if not prestamo.abonos or len(prestamo.abonos) == 0:
-            prestamo.saldo = prestamo.monto + (prestamo.monto * prestamo.interes / 100)
-
-        db.session.commit()
-        return jsonify({"ok": True, "msg": "Préstamo actualizado correctamente."})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"ok": False, "error": str(e)})
-
-
 # ======================================================
 # 🔐 LOGIN Y LOGOUT
 # ======================================================
@@ -314,24 +273,17 @@ def logout():
     return redirect(url_for("app_rutas.login"))
 
 # ======================================================
-# 🧍‍♂️ NUEVO CLIENTE — CREACIÓN Y RENOVACIÓN (versión FINAL OPTIMIZADA — commit controlado)
+# 🧍‍♂️ NUEVO CLIENTE — CREACIÓN Y RENOVACIÓN (FINAL con orden automático igual que index)
 # ======================================================
 @app_rutas.route("/nuevo_cliente", methods=["GET", "POST"])
 @login_required
 def nuevo_cliente():
-    """
-    Crea un cliente nuevo o renueva uno cancelado sin eliminar su historial.
-    - Si no existe → se crea normalmente.
-    - Si existe y está cancelado → se CREA UN NUEVO REGISTRO ACTIVO (el viejo queda en cancelados).
-    - Si existe y está activo → advertencia.
-    """
     from datetime import timedelta
+    from sqlalchemy import func
+    from helpers import eliminar_cache_resumen_hoy
 
     if request.method == "POST":
         try:
-            # ------------------------------------------------------
-            # 🧾 Captura de datos del formulario
-            # ------------------------------------------------------
             nombre = (request.form.get("nombre") or "").strip()
             codigo = (request.form.get("codigo") or "").strip()
             direccion = (request.form.get("direccion") or "").strip()
@@ -341,6 +293,10 @@ def nuevo_cliente():
             plazo = request.form.get("plazo", type=int) or 0
             orden = request.form.get("orden", type=int) or 0
             frecuencia = (request.form.get("frecuencia") or "diario").strip().lower()
+
+            if orden <= 0:
+                flash("El número de orden es inválido. Ese número no existe en la lista.", "warning")
+                return redirect(url_for("app_rutas.nuevo_cliente"))
 
             FRECUENCIAS_VALIDAS = {"diario", "semanal", "quincenal", "mensual"}
             if frecuencia not in FRECUENCIAS_VALIDAS:
@@ -362,15 +318,23 @@ def nuevo_cliente():
                     codigo=cliente.codigo,
                     direccion=direccion or cliente.direccion or "",
                     telefono=telefono or cliente.telefono or "",
-                    orden=orden or cliente.orden or 0,
+                    orden=orden,
                     fecha_creacion=hoy,
                     ultimo_abono_fecha=None,
                     saldo=0.0,
                     cancelado=False,
                 )
                 db.session.add(nuevo)
-                db.session.flush()  # obtener nuevo.id
+                db.session.flush()
 
+                # mover otros para abajo (MISMA LÓGICA DEL INDEX)
+                Cliente.query.filter(
+                    Cliente.id != nuevo.id,
+                    Cliente.cancelado == False,
+                    Cliente.orden >= nuevo.orden
+                ).update({Cliente.orden: Cliente.orden + 1}, synchronize_session=False)
+
+                # préstamo
                 if monto > 0:
                     saldo_total = monto + (monto * (interes / 100.0))
                     prestamo = Prestamo(
@@ -391,26 +355,24 @@ def nuevo_cliente():
                     nuevo.saldo = saldo_total
                     db.session.add_all([prestamo, mov])
 
-                cliente.ultimo_abono_fecha = cliente.ultimo_abono_fecha or hora_actual()
+                eliminar_cache_resumen_hoy()
                 db.session.commit()
 
-                # ✅ Recalcular sin duplicar commits
                 if monto > 0:
                     actualizar_liquidacion_por_movimiento(hoy, commit=False)
                     db.session.commit()
-
                 flash(f"Cliente {nuevo.nombre} renovado correctamente (histórico preservado).", "success")
                 return redirect(url_for("app_rutas.index", focus_abono=nuevo.id))
 
             # ======================================================
-            # 🚫 Cliente activo existente
+            # 🚫 Ya existe activo
             # ======================================================
             if cliente and not cliente.cancelado:
                 flash("Ese código ya pertenece a un cliente activo.", "warning")
                 return redirect(url_for("app_rutas.nuevo_cliente"))
 
             # ======================================================
-            # 🧍‍♂️ Nuevo cliente (no existe)
+            # 🆕 Nuevo cliente
             # ======================================================
             nuevo = Cliente(
                 nombre=nombre or codigo,
@@ -424,6 +386,14 @@ def nuevo_cliente():
             db.session.add(nuevo)
             db.session.flush()
 
+            # mover otros para abajo exactamente igual que index
+            Cliente.query.filter(
+                Cliente.id != nuevo.id,
+                Cliente.cancelado == False,
+                Cliente.orden >= nuevo.orden
+            ).update({Cliente.orden: Cliente.orden + 1}, synchronize_session=False)
+
+            # préstamo inicial
             if monto > 0:
                 saldo_total = monto + (monto * (interes / 100.0))
                 prestamo = Prestamo(
@@ -444,9 +414,9 @@ def nuevo_cliente():
                 nuevo.saldo = saldo_total
                 db.session.add_all([prestamo, mov])
 
+            eliminar_cache_resumen_hoy()
             db.session.commit()
 
-            # ✅ Recalcular liquidación sin segundo commit redundante
             if monto > 0:
                 actualizar_liquidacion_por_movimiento(hoy, commit=False)
                 db.session.commit()
@@ -460,9 +430,7 @@ def nuevo_cliente():
             flash("Ocurrió un error inesperado al crear o renovar el cliente.", "danger")
             return redirect(url_for("app_rutas.nuevo_cliente"))
 
-    # ------------------------------------------------------
-    # 📋 GET — Mostrar formulario
-    # ------------------------------------------------------
+    # GET
     try:
         codigo_sugerido = generar_codigo_cliente()
     except Exception:
@@ -698,7 +666,6 @@ def reactivar_cliente(cliente_id):
 @app_rutas.route("/actualizar_orden/<int:cliente_id>", methods=["POST"])
 @login_required
 def actualizar_orden(cliente_id):
-    from sqlalchemy import and_
     from helpers import eliminar_cache_resumen_hoy
 
     nueva_orden = request.form.get("orden", type=int)
@@ -712,25 +679,28 @@ def actualizar_orden(cliente_id):
         return "OK"
 
     try:
+        # ✅ REORDENAMIENTO UNIVERSAL (funciona saltos cortos y largos)
         if nueva_orden < orden_actual:
+            # mover hacia arriba
             Cliente.query.filter(
-                Cliente.id != cliente.id,
-                Cliente.cancelado == False,
                 Cliente.orden >= nueva_orden,
-                Cliente.orden < orden_actual
+                Cliente.orden < orden_actual,
+                Cliente.cancelado == False,
+                Cliente.id != cliente.id
             ).update({Cliente.orden: Cliente.orden + 1}, synchronize_session=False)
         else:
+            # mover hacia abajo
             Cliente.query.filter(
-                Cliente.id != cliente.id,
-                Cliente.cancelado == False,
                 Cliente.orden <= nueva_orden,
-                Cliente.orden > orden_actual
+                Cliente.orden > orden_actual,
+                Cliente.cancelado == False,
+                Cliente.id != cliente.id
             ).update({Cliente.orden: Cliente.orden - 1}, synchronize_session=False)
 
         cliente.orden = nueva_orden
         db.session.commit()
 
-        # 🔥 cuando cambio orden, hay que invalidar cache
+        # 🔥 invalidar cache del día
         eliminar_cache_resumen_hoy()
 
         return "OK"
@@ -739,7 +709,6 @@ def actualizar_orden(cliente_id):
         db.session.rollback()
         print("[ERROR actualizar_orden]", e)
         return "error interno", 500
-
 
 # ======================================================
 # ❌ ELIMINAR CLIENTE — VERSIÓN FINAL (prestamo_revertido + capital real)
