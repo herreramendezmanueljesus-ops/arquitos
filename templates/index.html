@@ -593,6 +593,7 @@ document.addEventListener("DOMContentLoaded", () => {
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".orden-input").forEach(input => {
+
     input.addEventListener("change", async () => {
       const id = input.dataset.id;
       const value = input.value;
@@ -603,16 +604,18 @@ document.addEventListener("DOMContentLoaded", () => {
         body: `orden=${value}`
       });
 
-      const data = await res.json();
+      const data = await res.text(); // ← ahora recibimos texto, no JSON
 
-      if (data.ok) {
-        location.reload(); // por ahora refresco rápido (luego hacemos animación sin reload)
+      if (data === "OK") {
+        location.reload(); // ✅ ahora sí recarga correctamente
       } else {
         alert("❌ Error al actualizar el orden");
       }
     });
+
   });
 });
 </script>
+
 
 {% endblock %}

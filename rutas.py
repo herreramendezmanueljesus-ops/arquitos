@@ -699,16 +699,17 @@ def reactivar_cliente(cliente_id):
 @login_required
 def actualizar_orden(cliente_id):
     from sqlalchemy import and_
+    from helpers import eliminar_cache_resumen_hoy
 
     nueva_orden = request.form.get("orden", type=int)
     if not nueva_orden or nueva_orden < 1:
-        return jsonify({"ok": False, "error": "orden inválida"}), 400
+        return "orden inválida", 400
 
     cliente = Cliente.query.get_or_404(cliente_id)
     orden_actual = cliente.orden or 9999
 
     if nueva_orden == orden_actual:
-        return jsonify({"ok": True, "msg": "orden igual"}), 200
+        return "OK"
 
     try:
         if nueva_orden < orden_actual:
@@ -729,11 +730,16 @@ def actualizar_orden(cliente_id):
         cliente.orden = nueva_orden
         db.session.commit()
 
-        return jsonify({"ok": True})
+        # 🔥 cuando cambio orden, hay que invalidar cache
+        eliminar_cache_resumen_hoy()
+
+        return "OK"
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({"ok": False, "error": str(e)}), 500
+        print("[ERROR actualizar_orden]", e)
+        return "error interno", 500
+
 
 # ======================================================
 # ❌ ELIMINAR CLIENTE — VERSIÓN FINAL (prestamo_revertido + capital real)
