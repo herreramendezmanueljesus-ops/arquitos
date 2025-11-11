@@ -18,7 +18,8 @@ from helpers import (
     obtener_resumen_total,
     actualizar_liquidacion_por_movimiento,
 )
-from tiempo import hora_actual, to_hora_chile as hora_chile
+from tiempo import hora_actual, to_hora_chile as hora_chile, mes_actual_chile_bounds
+import tiempo
 
 
 # ======================================================
@@ -1087,7 +1088,9 @@ def registrar_abono_por_codigo():
 @app_rutas.route("/ganancias_mes")
 @login_required
 def ganancias_mes_view():
-    inicio, fin, _ahora = mes_actual_chile_bounds()
+    # ✅ Se llama directamente desde el módulo tiempo
+    import tiempo
+    inicio, fin, _ahora = tiempo.mes_actual_chile_bounds()
 
     q = (
         db.session.query(Prestamo, Cliente)
