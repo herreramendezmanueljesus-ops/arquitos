@@ -813,12 +813,13 @@ def eliminar_cliente(cliente_id):
         return redirect(url_for("app_rutas.index"))
 
 # ======================================================
-# 💵 OTORGAR PRÉSTAMO A CLIENTE
+# 💵 OTORGAR PRÉSTAMO A CLIENTE (VERSIÓN CORREGIDA)
 # ======================================================
 @app_rutas.route("/otorgar_prestamo/<int:cliente_id>", methods=["POST"])
 @login_required
 def otorgar_prestamo(cliente_id):
     cliente = Cliente.query.get_or_404(cliente_id)
+
     try:
         monto = float(request.form.get("monto", 0))
         interes = float(request.form.get("interes", 0))
@@ -831,31 +832,61 @@ def otorgar_prestamo(cliente_id):
         flash("El monto debe ser mayor a 0", "warning")
         return redirect(url_for("app_rutas.index"))
 
+    hoy = local_date()
+
+    # 🔒 (Opcional) NO permitir otro préstamo si ya tiene uno con saldo > 0
+    prestamo_activo = (
+        Prestamo.query
+        .filter(Prestamo.cliente_id == cliente.id, Prestamo.saldo > 0)
+        .order_by(Prestamo.fecha.desc())
+        .first()
+    )
+    if prestamo_activo:
+        flash("Este cliente ya tiene un préstamo activo.", "warning")
+        return redirect(url_for("app_rutas.index", focus_abono=cliente.id))
+
+    # 💰 Calcular saldo total con interés
     saldo_con_interes = monto + (monto * (interes / 100.0))
+
+    # 🧾 Crear préstamo nuevo
     prestamo = Prestamo(
         cliente_id=cliente.id,
         monto=monto,
         interes=interes,
         plazo=plazo,
-        fecha=local_date(),
+        fecha=hoy,
         saldo=saldo_con_interes,
+        frecuencia="diario",              # o lo que uses por defecto
+        ultima_aplicacion_interes=hoy,    # para que quede coherente
     )
     db.session.add(prestamo)
 
+    # 🧍‍♂️ Sincronizar el CLIENTE con este nuevo préstamo
+    cliente.monto = monto
+    cliente.interes = interes
+    cliente.plazo = plazo
+    cliente.saldo = saldo_con_interes
+    cliente.cancelado = False           # ✅ quedará "activo"
+    cliente.ultimo_abono_fecha = None   # todavía no tiene abonos
+
+    # 💸 Registrar movimiento en caja (yo usaría tipo="prestamo" para unificar)
     mov = MovimientoCaja(
-        tipo="salida",
+        tipo="prestamo",  # 👈 antes tenías "salida"; si en otros lados usas "prestamo", mejor esto
         monto=monto,
         descripcion=f"Préstamo a {cliente.nombre}",
-        fecha=hora_actual(),  # ✅ hora real convertida a UTC
+        fecha=hora_actual(),
     )
     db.session.add(mov)
+
+    # 🧮 Actualizar cache / liquidación
+    eliminar_cache_resumen_hoy()
     db.session.commit()
 
-    actualizar_liquidacion_por_movimiento(local_date())
+    actualizar_liquidacion_por_movimiento(hoy, commit=False)
+    db.session.commit()
 
-    flash(f"Préstamo de ${monto:.2f} otorgado a {cliente.nombre}", "success")
-    return redirect(url_for("app_rutas.index"))
-
+    flash(f"Préstamo de ${monto:.0f} otorgado a {cliente.nombre}", "success")
+    return redirect(url_for("app_rutas.index", focus_abono=cliente.id))
 
 # ======================================================
 # 🧾 HISTORIAL DE ABONOS — para modal (vista cancelados)
