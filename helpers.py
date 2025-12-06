@@ -52,42 +52,32 @@ def crear_liquidacion_para_fecha(fecha: date):
 # 🔹 Totales globales (Cartera + Caja total)
 # ---------------------------------------------------
 def obtener_resumen_total():
-    """Calcula los totales generales de caja y cartera del sistema."""
-    total_entradas = (
-        db.session.query(func.sum(case((MovimientoCaja.tipo == 'entrada_manual', MovimientoCaja.monto), else_=0)))
-        .scalar() or 0.0
-    )
+    """
+    Resumen oficial del sistema:
+    - caja_total: la caja de HOY según la liquidación
+      (caja_anterior + abonos + entradas_manual - (prestamos + salidas + gastos))
+    - cartera_total: suma de saldos de préstamos activos
+    """
+    hoy = local_date()
 
-    total_salidas = (
-        db.session.query(func.sum(case((MovimientoCaja.tipo == 'salida', MovimientoCaja.monto), else_=0)))
-        .scalar() or 0.0
-    )
+    # Nos aseguramos de tener la liquidación del día actual recalculada
+    liq_hoy = actualizar_liquidacion_por_movimiento(hoy, commit=True)
 
-    total_gastos = (
-        db.session.query(func.sum(case((MovimientoCaja.tipo == 'gasto', MovimientoCaja.monto), else_=0)))
-        .scalar() or 0.0
-    )
+    # 👉 Caja oficial del sistema = caja calculada en la liquidación de hoy
+    caja_total = float(liq_hoy.caja or 0.0)
 
-    caja_total = total_entradas - total_salidas - total_gastos
-
+    # Cartera total (igual que antes)
     cartera_total = float(
         db.session.query(func.coalesce(func.sum(Prestamo.saldo), 0)).scalar() or 0.0
     )
 
     return {
-        'caja_total': caja_total,
-        'cartera_total': cartera_total
+        "caja_total": caja_total,
+        "cartera_total": cartera_total,
     }
 
 
-# ---------------------------------------------------
-# 🔄 Actualizar liquidación del día tras cualquier movimiento
-# ---------------------------------------------------
 def actualizar_liquidacion_por_movimiento(fecha: date, commit: bool = True):
-    """
-    Recalcula la liquidación para una fecha según los movimientos del día.
-    Si commit=False, solo devuelve el objeto sin guardar.
-    """
     start, end = day_range(fecha)
 
     # 💰 Entradas por abonos
@@ -130,13 +120,12 @@ def actualizar_liquidacion_por_movimiento(fecha: date, commit: bool = True):
         .scalar() or 0.0
     )
 
-    # 💳 Préstamos entregados
+    # 💳 Préstamos entregados — ahora desde Prestamo
     prestamos_entregados = (
-        db.session.query(func.coalesce(func.sum(MovimientoCaja.monto), 0))
+        db.session.query(func.coalesce(func.sum(Prestamo.monto), 0))
         .filter(
-            MovimientoCaja.tipo == 'prestamo',
-            MovimientoCaja.fecha >= start,
-            MovimientoCaja.fecha < end
+            Prestamo.fecha >= start,
+            Prestamo.fecha < end
         )
         .scalar() or 0.0
     )
@@ -169,6 +158,7 @@ def actualizar_liquidacion_por_movimiento(fecha: date, commit: bool = True):
         db.session.commit()
 
     return liq
+
 
 
 # ---------------------------------------------------
