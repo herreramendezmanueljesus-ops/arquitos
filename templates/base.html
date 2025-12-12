@@ -129,7 +129,45 @@
         min-width: 900px;
       }
     }
+
+    /* =========================================================
+       📱 TABLA DE CLIENTES EN CELULAR
+       - La tabla NO agranda toda la página
+       - Misma escala que la barra negra superior
+       ========================================================= */
+    @media (max-width: 768px) {
+
+      .tabla-clientes-wrapper {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      #tabla-clientes {
+        width: 100%;
+        max-width: 100%;
+        table-layout: fixed;
+        font-size: 0.78rem;
+      }
+
+      #tabla-clientes th,
+      #tabla-clientes td {
+        padding: 0.25rem 0.35rem;
+        white-space: normal;
+        word-wrap: break-word;
+  
+    }
+
+      /* Anula cualquier min-width viejo */
+      #tabla-clientes,
+      .tabla-clientes-wrapper table {
+        min-width: 0 !important;
+      }
+    }
+
 </style>
+
   <!-- Sonido -->
   <audio id="audioReactivaCliente">
     <source src="https://cdn.jsdelivr.net/gh/ManzDev/sounds/coin.mp3" type="audio/mpeg">

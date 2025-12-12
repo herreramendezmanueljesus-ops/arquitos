@@ -12,118 +12,119 @@
 {# aquí ya seguiría tu tabla de clientes como la tienes ahora #}
 <!-- =================== TABLA DE CLIENTES =================== -->
 {% if clientes %}
-<table id="tabla-clientes" class="table table-bordered table-hover align-middle text-center">
-  <thead class="table-dark">
-    <tr>
-      <th>Orden</th>
-      <th>Código</th>
-      <th>Fecha</th>
-      <th>Nombre</th>
-      <th>Venta</th>
-      <th>Cuota</th>
-      <th>Cuotas Atrasadas</th>
-      <th>Último Abono</th>
-      <th>Abonar</th>
-      <th>Saldo</th>
-      <th>Eliminar</th>
-    </tr>
-  </thead>
+<div class="tabla-clientes-wrapper">
+  <table id="tabla-clientes" class="table table-bordered table-hover align-middle text-center">
+    <thead class="table-dark">
+      <tr>
+        <th>Orden</th>
+        <th>Código</th>
+        <th>Fecha</th>
+        <th>Nombre</th>
+        <th>Venta</th>
+        <th>Cuota</th>
+        <th>Cuotas Atrasadas</th>
+        <th>Último Abono</th>
+        <th>Abonar</th>
+        <th>Saldo</th>
+        <th>Eliminar</th>
+      </tr>
+    </thead>
 
-  <tbody>
-  {% for c in clientes %}
-    {# 🧮 Último préstamo del cliente (si tiene) #}
-    {% set u = (c.prestamos|sort(attribute='fecha'))|last if c.prestamos else None %}
+    <tbody>
+    {% for c in clientes %}
+      {% set u = (c.prestamos|sort(attribute='fecha'))|last if c.prestamos else None %}
 
-    <tr id="cliente-row-{{ c.id }}"
-    class="fila-cliente
-      {% if c.cancelado %}
-        cancelado
-      {% elif c.estado_plazo and c.estado_plazo|lower == 'vencido' %}
-        plazo-vencido
-      {% elif c.estado_plazo and c.estado_plazo|lower == 'moroso' %}
-        plazo-moroso
-      {% endif %}
-    ">
+      <tr id="cliente-row-{{ c.id }}"
+      class="fila-cliente
+        {% if c.cancelado %}
+          cancelado
+        {% elif c.estado_plazo and c.estado_plazo|lower == 'vencido' %}
+          plazo-vencido
+        {% elif c.estado_plazo and c.estado_plazo|lower == 'moroso' %}
+          plazo-moroso
+        {% endif %}
+      ">
 
-      <!-- ORDEN -->
-      <td style="width:100px;">
-        <input type="number"
-               class="form-control text-center orden-input"
-               value="{{ c.orden }}"
-               data-id="{{ c.id }}"
-               style="width:70px;"
-               {% if c.cancelado %}disabled{% endif %}>
-      </td>
+        <!-- ORDEN -->
+        <td style="width:100px;">
+          <input type="number"
+                 class="form-control text-center orden-input"
+                 value="{{ c.orden }}"
+                 data-id="{{ c.id }}"
+                 style="width:70px;"
+                 {% if c.cancelado %}disabled{% endif %}>
+        </td>
 
-      <!-- DATOS PRINCIPALES -->
-      <td>{{ c.codigo }}</td>
-      <td>{{ c.fecha_creacion.strftime("%d/%m/%Y") }}</td>
-      <td class="nombre-cliente">{{ c.nombre }}</td>
+        <!-- DATOS PRINCIPALES -->
+        <td>{{ c.codigo }}</td>
+        <td>{{ c.fecha_creacion.strftime("%d/%m/%Y") }}</td>
+        <td class="nombre-cliente">{{ c.nombre }}</td>
 
-      <!-- MONTO PRESTADO (sin interés) -->
-      <td>{{ "%.2f"|format(c.capital_total_sin_interes()) }}</td>
+        <!-- MONTO PRESTADO (sin interés) -->
+        <td>{{ "%.2f"|format(c.capital_total_sin_interes()) }}</td>
 
-      <!-- CUOTA -->
-      <td>
-        {{ "%.2f"|format(c.valor_cuota()) }}
-        {% if c.prestamos %}
-          {% set u = (c.prestamos|sort(attribute='fecha'))|last %}
-          {% if u.frecuencia %}
-            <small class="text-muted">({{ u.frecuencia }})</small>
+        <!-- CUOTA -->
+        <td>
+          {{ "%.2f"|format(c.valor_cuota()) }}
+          {% if c.prestamos %}
+            {% set u = (c.prestamos|sort(attribute='fecha'))|last %}
+            {% if u.frecuencia %}
+              <small class="text-muted">({{ u.frecuencia }})</small>
+            {% endif %}
           {% endif %}
-        {% endif %}
-      </td>
+        </td>
 
-      <!-- CUOTAS ATRASADAS -->
-      <td>{{ c.cuotas_atrasadas() }}</td>
+        <!-- CUOTAS ATRASADAS -->
+        <td>{{ c.cuotas_atrasadas() }}</td>
 
-      <!-- ÚLTIMO ABONO -->
-      <td id="ultimo-abono-{{ c.id }}">
-        {{ "%.2f"|format(c.ultimo_abono_monto()) }}
-      </td>
+        <!-- ÚLTIMO ABONO -->
+        <td id="ultimo-abono-{{ c.id }}">
+          {{ "%.2f"|format(c.ultimo_abono_monto()) }}
+        </td>
 
-      <!-- ABONAR -->
-      <td class="abono-td">
-        <form action="{{ url_for('app_rutas.registrar_abono_por_codigo') }}"
-              method="post"
-              class="d-flex justify-content-center form-abono"
-              data-orden="{{ c.orden }}">
-          <input type="hidden" name="codigo" value="{{ c.codigo }}">
-          <input type="number" step="0.01" min="0.01" name="monto" placeholder="0"
-                 class="form-control text-end abono-input fw-bold {% if c.ultimo_abono_fecha == hoy %}bg-success text-white{% endif %}"
-                 style="width:120px; height:50px; font-size:1.4rem;"
-                 required autocomplete="off">
-          <button type="submit" class="btn btn-success ms-2" style="font-size:1.4rem; padding:0 15px;">💵</button>
-        </form>
+        <!-- ABONAR -->
+        <td class="abono-td">
+          <form action="{{ url_for('app_rutas.registrar_abono_por_codigo') }}"
+                method="post"
+                class="d-flex justify-content-center form-abono"
+                data-orden="{{ c.orden }}">
+            <input type="hidden" name="codigo" value="{{ c.codigo }}">
+            <input type="number" step="0.01" min="0.01" name="monto" placeholder="0"
+                   class="form-control text-end abono-input fw-bold {% if c.ultimo_abono_fecha == hoy %}bg-success text-white{% endif %}"
+                   style="width:120px; height:50px; font-size:1.4rem;"
+                   required autocomplete="off">
+            <button type="submit" class="btn btn-success ms-2" style="font-size:1.4rem; padding:0 15px;">💵</button>
+          </form>
 
-        {% if c.cancelado %}
-          <small class="text-danger fw-bold d-block mt-1">Cancelado</small>
-        {% endif %}
-      </td>
+          {% if c.cancelado %}
+            <small class="text-danger fw-bold d-block mt-1">Cancelado</small>
+          {% endif %}
+        </td>
 
-      <!-- SALDO -->
-      <td>
-        {% if c.cancelado %}
-          <span class="text-muted saldo-texto" data-cliente-id="{{ c.id }}">0.00</span>
-        {% else %}
-          <button class="btn btn-link p-0 saldo-clickable saldo-texto" data-cliente-id="{{ c.id }}">
-            {{ "%.2f"|format(c.saldo_total()) }}
+        <!-- SALDO -->
+        <td>
+          {% if c.cancelado %}
+            <span class="text-muted saldo-texto" data-cliente-id="{{ c.id }}">0.00</span>
+          {% else %}
+            <button class="btn btn-link p-0 saldo-clickable saldo-texto" data-cliente-id="{{ c.id }}">
+              {{ "%.2f"|format(c.saldo_total()) }}
+            </button>
+          {% endif %}
+        </td>
+
+        <!-- 🗑️ ELIMINAR CLIENTE -->
+        <td>
+          <button class="btn btn-danger btn-sm eliminar-cliente-btn"
+                  data-id="{{ c.id }}"
+                  data-nombre="{{ c.nombre }}">
+            🗑️ Eliminar
           </button>
-        {% endif %}
-      </td>
-
-      <!-- 🗑️ ELIMINAR CLIENTE -->
-      <td>
-        <button class="btn btn-danger btn-sm eliminar-cliente-btn"
-                data-id="{{ c.id }}"
-                data-nombre="{{ c.nombre }}">
-          🗑️ Eliminar
-        </button>
-      </td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% else %}
   <div class="alert alert-info text-center mt-4">
     No hay clientes registrados aún.
