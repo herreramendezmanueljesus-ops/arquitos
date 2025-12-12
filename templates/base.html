@@ -131,40 +131,49 @@
     }
 
     /* =========================================================
-       📱 TABLA DE CLIENTES EN CELULAR
-       - La tabla NO agranda toda la página
-       - Misma escala que la barra negra superior
-       ========================================================= */
-    @media (max-width: 768px) {
+   📱 TABLA DE CLIENTES EN CELULAR
+   - No rompe encabezados letra por letra
+   - No agranda la página
+   - Mantiene el “cabía bien” como antes
+   ========================================================= */
+@media (max-width: 768px) {
 
-      .tabla-clientes-wrapper {
-        width: 100%;
-        max-width: 100%;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-      }
+  /* si no usas este wrapper, no pasa nada */
+  .tabla-clientes-wrapper {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
 
-      #tabla-clientes {
-        width: 100%;
-        max-width: 100%;
-        table-layout: fixed;
-        font-size: 0.78rem;
-      }
+  /* la clave: NO fixed */
+  #tabla-clientes {
+    width: 100%;
+    max-width: 100%;
+    table-layout: auto;      /* ✅ antes te funcionaba así */
+    font-size: 0.78rem;
+  }
 
-      #tabla-clientes th,
-      #tabla-clientes td {
-        padding: 0.25rem 0.35rem;
-        white-space: normal;
-        word-wrap: break-word;
-  
-    }
+  /* encabezados: NO se rompen por letras */
+  #tabla-clientes th {
+    white-space: nowrap;     /* ✅ evita “Cu / ot / as…” */
+    word-break: keep-all;
+    overflow-wrap: normal;
+    text-align: center;
+    vertical-align: middle;
+    padding: 0.25rem 0.35rem;
+  }
 
-      /* Anula cualquier min-width viejo */
-      #tabla-clientes,
-      .tabla-clientes-wrapper table {
-        min-width: 0 !important;
-      }
-    }
+  /* celdas: igual, sin partir */
+  #tabla-clientes td {
+    white-space: nowrap;
+    padding: 0.25rem 0.35rem;
+  }
+
+  /* por si había min-width viejo */
+  #tabla-clientes {
+    min-width: 0 !important;
+  }
+}
 
 </style>
 
