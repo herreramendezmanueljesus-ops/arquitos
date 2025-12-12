@@ -377,14 +377,11 @@ document.addEventListener("DOMContentLoaded", () => {
           setTimeout(() => toast.remove(), 4000);
         }
 
-        // ✨ limpiar input y dejarlo verde un rato
+        // ✨ limpiar input (el color verde lo maneja Flask)
         if (input) {
-          input.value = "";
-          input.classList.add("bg-success", "text-white");
-          setTimeout(() => {
-            input.classList.remove("bg-success", "text-white");
-          }, 5000);
-        }
+                         input.value = "";
+                      } 
+
 
       } catch (err) {
         playSound(false);
